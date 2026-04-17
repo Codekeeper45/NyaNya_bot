@@ -6,6 +6,7 @@ import { buildProactivePrompt } from './prompts/proactive.js';
 import { mem0 } from '../memory/mem0.js';
 import { messagesRepo } from '../db/repos/messages.js';
 import { allTools } from './tools/index.js';
+import { bot } from '../bot/bot.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('orchestrator');
@@ -23,9 +24,11 @@ export interface OrchestratorInput {
   preferences?: Record<string, unknown>;
   mode: 'reactive' | 'proactive';
   userMessage?: string;
+  images?: Array<{ data: string; mimeType: string }>;
   proactiveKind?: string;
   proactiveContext?: string;
   proactiveAttempt?: number;
+  onboardingComplete?: boolean;
 }
 
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
@@ -55,6 +58,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     wakeTime: input.wakeTime,
     sleepTime: input.sleepTime,
     preferences: input.preferences,
+    onboardingComplete: input.onboardingComplete,
   });
 
   if (input.mode === 'proactive') {
@@ -66,14 +70,27 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   }
 
   // 4. Prepare messages
-  const messages = [...messageHistory];
+  const messages: any[] = [...messageHistory];
   if (input.userMessage) {
-    messages.push({ role: 'user' as const, content: input.userMessage });
+    const userContent: any[] = [{ type: 'text', text: input.userMessage }];
+    
+    if (input.images && input.images.length > 0) {
+      for (const img of input.images) {
+        userContent.push({
+          type: 'image',
+          image: img.data,
+          mimeType: img.mimeType,
+        });
+      }
+    }
+
+    messages.push({ role: 'user' as const, content: userContent });
+    
     await messagesRepo.create({
       userId: input.userId,
       role: 'user',
-      content: input.userMessage,
-      source: 'text',
+      content: input.userMessage + (input.images && input.images.length > 0 ? ` [Изображений: ${input.images.length}]` : ''),
+      source: input.images && input.images.length > 0 ? 'photo' : 'text',
     });
   }
   if (input.mode === 'proactive' && !input.userMessage) {
@@ -86,18 +103,32 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   // 5. Run agent loop
   log.info({ userId: input.userId, mode: input.mode }, 'Starting orchestrator');
 
+  const { tools, wasSent } = allTools(input);
+
   const result = await generateText({
     model: openrouter(config.primaryModel),
     system: systemPrompt,
     messages,
-    tools: allTools(input),
+    tools,
     stopWhen: stepCountIs(15),
     temperature: 0.7,
   });
 
   log.info({ userId: input.userId, steps: result.steps.length }, 'Orchestrator completed');
 
-  // 6. Extract memories from conversation
+  // 6. Fallback: если модель не вызвала message_send_text — отправляем result.text напрямую
+  if (!wasSent() && result.text?.trim()) {
+    log.warn({ userId: input.userId }, 'Model did not call message_send_text — sending result.text as fallback');
+    await bot.api.sendMessage(input.telegramChatId, result.text);
+    await messagesRepo.create({
+      userId: input.userId,
+      role: 'assistant',
+      content: result.text,
+      source: 'text',
+    });
+  }
+
+  // 7. Extract memories from conversation
   const conversationForMemory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   if (input.userMessage) {
     conversationForMemory.push({ role: 'user', content: input.userMessage });

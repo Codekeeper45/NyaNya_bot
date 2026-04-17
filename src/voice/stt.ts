@@ -25,9 +25,11 @@ export async function transcribeVoice(fileId: string): Promise<string> {
 
   try {
     const file = await bot.api.getFile(fileId);
+    if (!file.file_path) throw new Error('Telegram did not return file_path');
     const fileUrl = `https://api.telegram.org/file/bot${config.telegramBotToken}/${file.file_path}`;
 
     const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error(`Failed to download voice file: ${response.status}`);
     const buffer = Buffer.from(await response.arrayBuffer());
 
     const transcription = await client.audio.transcriptions.create({

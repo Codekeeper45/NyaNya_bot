@@ -12,8 +12,10 @@ const configSchema = z.object({
   upstashRedisUrl: z.string().min(1),
   openaiApiKey: z.string().optional().default(''),
   braveSearchApiKey: z.string().optional().default(''),
+  googleClientId: z.string().optional().default(''),
+  googleClientSecret: z.string().optional().default(''),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-  nodeEnv: z.enum(['development', 'production']).default('development'),
+  nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
   defaultTimezone: z.string().default('Asia/Almaty'),
 });
 
@@ -30,6 +32,8 @@ export const config = configSchema.parse({
   upstashRedisUrl: process.env.UPSTASH_REDIS_URL,
   openaiApiKey: process.env.OPENAI_API_KEY,
   braveSearchApiKey: process.env.BRAVE_SEARCH_API_KEY,
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
   logLevel: process.env.LOG_LEVEL,
   nodeEnv: process.env.NODE_ENV,
   defaultTimezone: process.env.DEFAULT_TIMEZONE,

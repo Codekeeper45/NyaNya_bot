@@ -9,15 +9,27 @@ import { createChildLogger } from '../../lib/logger.js';
 const log = createChildLogger('tool:messaging');
 
 export function messagingTools(chatId: number, userId: number) {
-  return {
+  let sent = false;
+
+  const wasSent = () => sent;
+
+  const tools = {
     message_send_text: tool({
       description: 'Отправить текстовое сообщение пользователю. Это ЕДИНСТВЕННЫЙ способ общения. ОБЯЗАТЕЛЬНО используй этот инструмент для каждого ответа.',
       inputSchema: z.object({
         text: z.string().describe('Текст сообщения на русском. Поддерживает Telegram Markdown.'),
       }),
       execute: async ({ text }) => {
+        if (sent) return { sent: false, reason: 'already_sent' };
+
         log.debug({ chatId, textLen: text.length }, 'Sending text');
-        await bot.api.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+        try {
+          await bot.api.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+        } catch {
+          // Markdown parse failed — retry as plain text
+          await bot.api.sendMessage(chatId, text);
+        }
+        sent = true;
         await messagesRepo.create({
           userId,
           role: 'assistant',
@@ -34,6 +46,9 @@ export function messagingTools(chatId: number, userId: number) {
         text: z.string().describe('Текст для озвучки (будет синтезирован в голосовое)'),
       }),
       execute: async ({ text }) => {
+        if (sent) return { sent: false, reason: 'already_sent' };
+        sent = true;
+
         log.debug({ chatId, textLen: text.length }, 'Sending voice');
         try {
           const audioBuffer = await synthesizeSpeech(text);
@@ -62,4 +77,6 @@ export function messagingTools(chatId: number, userId: number) {
       },
     }),
   };
+
+  return { tools, wasSent };
 }
