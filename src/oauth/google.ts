@@ -12,7 +12,7 @@ export function isGoogleOAuthConfigured(): boolean {
   return !!(config.googleClientId && config.googleClientSecret);
 }
 
-export function generateAuthUrl(): string {
+export function generateAuthUrl(telegramChatId: number): string {
   const params = new URLSearchParams({
     client_id: config.googleClientId ?? '',
     redirect_uri: REDIRECT_URI,
@@ -20,6 +20,7 @@ export function generateAuthUrl(): string {
     scope: SCOPES,
     access_type: 'offline',
     prompt: 'consent',
+    state: String(telegramChatId),
   });
   return `${AUTH_URL}?${params.toString()}`;
 }

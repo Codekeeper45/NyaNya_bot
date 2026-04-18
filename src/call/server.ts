@@ -5,6 +5,8 @@ import { createSession, getSession, addTurn, deleteSession } from './session.js'
 import { generateCallReply } from './dialogue.js';
 import { createChildLogger } from '../lib/logger.js';
 import { bot } from '../bot/bot.js';
+import { exchangeCode } from '../oauth/google.js';
+import { usersRepo } from '../db/repos/users.js';
 
 const log = createChildLogger('call:server');
 
@@ -132,6 +134,39 @@ export function startCallServer(): void {
     }
 
     res.sendStatus(204);
+  });
+
+  app.get('/auth/google/callback', async (req, res) => {
+    const code = req.query.code as string | undefined;
+    const state = req.query.state as string | undefined;
+
+    if (!code || !state) {
+      res.status(400).send('<h1>Ошибка</h1><p>Отсутствует code или state.</p>');
+      return;
+    }
+
+    const telegramChatId = parseInt(state, 10);
+    if (isNaN(telegramChatId)) {
+      res.status(400).send('<h1>Ошибка</h1><p>Некорректный state.</p>');
+      return;
+    }
+
+    try {
+      const refreshToken = await exchangeCode(code);
+      const user = await usersRepo.findByTelegramId(telegramChatId);
+      if (!user) {
+        res.status(404).send('<h1>Ошибка</h1><p>Пользователь не найден. Сначала напиши боту /start.</p>');
+        return;
+      }
+      await usersRepo.update(user.id, { googleRefreshToken: refreshToken });
+      log.info({ userId: user.id }, 'Google Calendar connected via callback');
+      await bot.api.sendMessage(telegramChatId, '✅ Google Calendar подключён! Попробуй: "что у меня сегодня в календаре?"').catch(() => {});
+      res.send('<h1>✅ Готово!</h1><p>Google Calendar подключён. Можешь закрыть эту страницу и вернуться в Telegram.</p>');
+    } catch (err) {
+      log.error({ err }, 'Google OAuth callback failed');
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
+      res.status(500).send(`<h1>Ошибка</h1><p>${message}</p><p>Вернись в Telegram и попробуй /gcal снова.</p>`);
+    }
   });
 
   app.listen(config.callServerPort, () => {

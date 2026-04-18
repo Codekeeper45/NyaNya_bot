@@ -71,14 +71,12 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       return;
     }
 
-    const authUrl = generateAuthUrl();
+    const authUrl = generateAuthUrl(ctx.chat.id);
     await ctx.reply(
       '📅 Подключение Google Calendar\n\n' +
       '1. Перейди по ссылке ниже и войди в Google\n' +
       '2. Разреши доступ к Calendar\n' +
-      '3. Браузер покажет ошибку "сайт недоступен" — это нормально\n' +
-      '4. Скопируй полную ссылку из адресной строки браузера\n' +
-      '5. Вставь её сюда в чат\n\n' +
+      '3. Страница сама подтвердит подключение\n\n' +
       `🔗 ${authUrl}`,
     );
   });
