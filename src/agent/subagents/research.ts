@@ -1,4 +1,4 @@
-import { generateText, tool, stepCountIs } from 'ai';
+import { generateText, tool } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { config } from '../../config.js';
@@ -13,8 +13,6 @@ const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
 
 export async function runResearchAgent(query: string, depth: 'shallow' | 'deep' = 'shallow'): Promise<string> {
   log.info({ query, depth }, 'Starting research');
-
-  const maxSteps = depth === 'deep' ? 8 : 3;
 
   const result = await generateText({
     model: openrouter(config.fastModel),
@@ -42,7 +40,6 @@ export async function runResearchAgent(query: string, depth: 'shallow' | 'deep' 
         },
       }),
     },
-    stopWhen: stepCountIs(maxSteps),
     temperature: 0.3,
   });
 
