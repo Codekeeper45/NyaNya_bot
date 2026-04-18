@@ -72,7 +72,7 @@ ${params.activeJobs ? `\n# Активное расписание\n${params.activ
 - Повторяющееся → schedule_repeating (cron). Отмена → schedule_repeating_cancel.
 - Изменить время подъёма / завтрака / обеда / ужина / рефлексии → schedule_update_routine. Поддерживает разное время по дням (будни vs выходные).
 - Посмотреть активные повторения → schedule_list.
-- Если пользователь не ответил на важное — followup_ask(delayMinutes).
+- followup_ask — ТОЛЬКО после проактивных сообщений из расписания (утреннее приветствие, вечерняя рефлексия, напоминания из расписания). НИКОГДА не вызывай followup_ask в ответ на сообщения пользователя — только бот сам инициировал диалог.
 
 ## Утреннее приветствие (morning_greeting)
 Обязательно: weather_get_forecast → gcal_list_all_events → habit_list.
