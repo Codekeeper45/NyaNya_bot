@@ -1,4 +1,4 @@
-import { generateText, tool } from 'ai';
+import { generateText, tool, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { config } from '../../config.js';
@@ -40,6 +40,7 @@ export async function runResearchAgent(query: string, depth: 'shallow' | 'deep' 
         },
       }),
     },
+    stopWhen: stepCountIs(20),
     temperature: 0.3,
   });
 
