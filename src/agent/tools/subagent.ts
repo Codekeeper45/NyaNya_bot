@@ -9,10 +9,9 @@ export function subagentTools() {
       description: 'Делегировать задачу поиска информации исследовательскому суб-агенту. Используй когда нужна актуальная информация из интернета.',
       inputSchema: z.object({
         query: z.string().describe('Что исследовать'),
-        depth: z.enum(['shallow', 'deep']).optional().default('deep').describe('shallow=1-3 поиска, deep=до 8'),
       }),
-      execute: async ({ query, depth }) => {
-        const summary = await runResearchAgent(query, depth);
+      execute: async ({ query }) => {
+        const summary = await runResearchAgent(query);
         return { summary };
       },
     }),

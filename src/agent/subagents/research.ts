@@ -11,8 +11,8 @@ const log = createChildLogger('subagent:research');
 
 const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
 
-export async function runResearchAgent(query: string, depth: 'shallow' | 'deep' = 'shallow'): Promise<string> {
-  log.info({ query, depth }, 'Starting research');
+export async function runResearchAgent(query: string): Promise<string> {
+  log.info({ query }, 'Starting research');
 
   const result = await generateText({
     model: openrouter(config.fastModel),
