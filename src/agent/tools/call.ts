@@ -9,7 +9,7 @@ const log = createChildLogger('tool:call');
 export function callTools(userId: number, telegramChatId: number, userName: string, timezone: string) {
   return {
     call_user: tool({
-      description: 'Позвонить пользователю на его собственный номер. Используй когда нужно срочно достучаться, когда он долго не отвечает, или когда сам просит позвонить.',
+      description: 'Позвонить пользователю на его собственный номер. Используй ТОЛЬКО когда нужно срочно достучаться и пользователь долго не отвечает в чате. НИКОГДА не используй если пользователь называет конкретный номер телефона — в этом случае используй call_third_party.',
       inputSchema: z.object({
         reason: z.string().describe('Причина звонка — что скажешь в начале разговора.'),
       }),
