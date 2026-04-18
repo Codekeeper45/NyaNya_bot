@@ -8,6 +8,18 @@ import { createChildLogger } from '../../lib/logger.js';
 
 const log = createChildLogger('tool:messaging');
 
+function markdownToHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>')
+    .replace(/__(.+?)__/gs, '<b>$1</b>')
+    .replace(/\*(.+?)\*/gs, '<i>$1</i>');
+}
+
 export function messagingTools(chatId: number, userId: number) {
   let sent = false;
 
@@ -24,9 +36,8 @@ export function messagingTools(chatId: number, userId: number) {
 
         log.debug({ chatId, textLen: text.length }, 'Sending text');
         try {
-          await bot.api.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+          await bot.api.sendMessage(chatId, markdownToHtml(text), { parse_mode: 'HTML' });
         } catch {
-          // Markdown parse failed — retry as plain text
           await bot.api.sendMessage(chatId, text);
         }
         sent = true;
@@ -47,12 +58,12 @@ export function messagingTools(chatId: number, userId: number) {
       }),
       execute: async ({ text }) => {
         if (sent) return { sent: false, reason: 'already_sent' };
-        sent = true;
 
         log.debug({ chatId, textLen: text.length }, 'Sending voice');
         try {
           const audioBuffer = await synthesizeSpeech(text);
           await bot.api.sendVoice(chatId, new InputFile(audioBuffer, 'voice.opus'));
+          sent = true;
           await messagesRepo.create({
             userId,
             role: 'assistant',
@@ -74,6 +85,34 @@ export function messagingTools(chatId: number, userId: number) {
           });
           return { sent: true, mode: 'text_fallback' };
         }
+      },
+    }),
+
+    message_send_photo: tool({
+      description: 'Отправить изображение пользователю по URL. Используй для отправки картинок из интернета, инфографики, скриншотов.',
+      inputSchema: z.object({
+        url: z.string().url().describe('URL изображения (jpg, png, gif, webp)'),
+        caption: z.string().optional().describe('Подпись к изображению'),
+      }),
+      execute: async ({ url, caption }) => {
+        if (sent) return { sent: false, reason: 'already_sent' };
+        try {
+          log.debug({ chatId, url }, 'Sending photo by URL');
+          await bot.api.sendPhoto(chatId, url, caption ? { caption } : undefined);
+        } catch (err) {
+          log.warn({ err, url }, 'Failed to send photo by URL, trying download');
+          try {
+            const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+            if (!res.ok) return { error: `Не удалось загрузить изображение: HTTP ${res.status}` };
+            const buf = Buffer.from(await res.arrayBuffer());
+            await bot.api.sendPhoto(chatId, new InputFile(buf, 'image.jpg'), caption ? { caption } : undefined);
+          } catch {
+            return { error: 'Не удалось отправить изображение.' };
+          }
+        }
+        sent = true;
+        await messagesRepo.create({ userId, role: 'assistant', content: caption ?? url, source: 'text', metadata: { photo: true } });
+        return { sent: true };
       },
     }),
   };

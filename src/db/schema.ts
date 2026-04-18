@@ -1,4 +1,4 @@
-import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer, unique } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -7,7 +7,13 @@ export const users = pgTable('users', {
   timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Almaty'),
   wakeTime: varchar('wake_time', { length: 5 }).default('08:00'),
   sleepTime: varchar('sleep_time', { length: 5 }).default('23:00'),
+  breakfastTime: varchar('breakfast_time', { length: 5 }),
+  lunchTime: varchar('lunch_time', { length: 5 }),
+  dinnerTime: varchar('dinner_time', { length: 5 }),
+  phoneNumber: varchar('phone_number', { length: 20 }),
   paused: boolean('paused').notNull().default(false),
+  onboardingComplete: boolean('onboarding_complete').notNull().default(false),
+  googleRefreshToken: text('google_refresh_token'),
   preferences: jsonb('preferences').$type<{
     voice_default?: boolean;
     dietary?: string[];
@@ -23,7 +29,7 @@ export const messages = pgTable('messages', {
   userId: integer('user_id').references(() => users.id).notNull(),
   role: varchar('role', { length: 20 }).notNull(), // user | assistant | system
   content: text('content').notNull(),
-  source: varchar('source', { length: 20 }).default('text'), // text | voice | cron
+  source: varchar('source', { length: 20 }).default('text'), // text | voice | photo
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -48,8 +54,40 @@ export const lessonPlans = pgTable('lesson_plans', {
   materials: jsonb('materials').$type<Record<string, unknown>[]>().default([]),
   plan: text('plan'),
   status: varchar('status', { length: 20 }).notNull().default('draft'),
+  scheduledDays: jsonb('scheduled_days').$type<number[]>().default([]),
+  scheduledTime: varchar('scheduled_time', { length: 10 }),
+  durationMinutes: integer('duration_minutes').default(45),
+  deadline: timestamp('deadline'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const repeatingJobs = pgTable('repeating_jobs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  schedulerId: varchar('scheduler_id', { length: 255 }).notNull().unique(),
+  kind: varchar('kind', { length: 50 }).notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+  cronPattern: varchar('cron_pattern', { length: 100 }).notNull(),
+  timezone: varchar('timezone', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const habits = pgTable('habits', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  targetDays: jsonb('target_days').$type<number[]>().default([0, 1, 2, 3, 4, 5, 6]),
+  streak: integer('streak').default(0),
+  lastLoggedDate: varchar('last_logged_date', { length: 10 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const habitLogs = pgTable('habit_logs', {
+  id: serial('id').primaryKey(),
+  habitId: integer('habit_id').references(() => habits.id, { onDelete: 'cascade' }).notNull(),
+  date: varchar('date', { length: 10 }).notNull(),
+  done: boolean('done').notNull(),
+}, (t) => [unique('habit_logs_habit_date_unique').on(t.habitId, t.date)]);
 
 // Type exports
 export type User = typeof users.$inferSelect;
@@ -57,3 +95,6 @@ export type NewUser = typeof users.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type LessonPlan = typeof lessonPlans.$inferSelect;
+export type RepeatingJob = typeof repeatingJobs.$inferSelect;
+export type Habit = typeof habits.$inferSelect;
+export type HabitLog = typeof habitLogs.$inferSelect;

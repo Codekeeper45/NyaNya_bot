@@ -24,7 +24,9 @@ export const jobsRepo = {
       status: data.status ?? 'scheduled',
       scheduledAt: data.scheduledAt ?? null,
     }).returning();
-    return result[0];
+    const row = result[0];
+    if (!row) throw new Error('DB insert returned no rows');
+    return row;
   },
 
   async updateStatus(id: number, status: string): Promise<void> {
@@ -48,5 +50,14 @@ export const jobsRepo = {
       .where(eq(jobs.bullJobId, bullJobId))
       .limit(1);
     return result[0];
+  },
+
+  async belongsToUser(bullJobId: string, userId: number): Promise<boolean> {
+    const result = await db()
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.bullJobId, bullJobId), eq(jobs.userId, userId)))
+      .limit(1);
+    return result.length > 0;
   },
 };

@@ -1,5 +1,6 @@
 import { opekuQueue } from './queue.js';
 import { jobsRepo } from '../db/repos/jobs.js';
+import { repeatingJobsRepo } from '../db/repos/repeating_jobs.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('jobs');
@@ -10,6 +11,9 @@ export type JobKind =
   | 'lesson_session'
   | 'followup_check'
   | 'daily_planning'
+  | 'evening_reflection'
+  | 'suggest_new_topic'
+  | 'weekly_digest'
   | 'custom_reminder';
 
 export interface JobPayload {
@@ -28,7 +32,7 @@ export async function scheduleJob(payload: JobPayload, delayMs: number): Promise
 
   await jobsRepo.create({
     userId: payload.userId,
-    bullJobId: jobId,
+    bullJobId: jobId || undefined,
     kind: payload.kind,
     payload: payload as unknown as Record<string, unknown>,
     status: 'scheduled',
@@ -50,6 +54,14 @@ export async function scheduleRepeatingJob(
     { pattern: cronPattern, tz: timezone },
     { name: payload.kind, data: payload },
   );
+  await repeatingJobsRepo.upsert({
+    userId: payload.userId,
+    schedulerId,
+    kind: payload.kind,
+    payload: payload as unknown as Record<string, unknown>,
+    cronPattern,
+    timezone,
+  });
   log.info({ schedulerId, kind: payload.kind, cron: cronPattern, tz: timezone }, 'Repeating job set');
 }
 
@@ -59,4 +71,21 @@ export async function cancelJob(bullJobId: string): Promise<void> {
     await job.remove();
     log.info({ bullJobId }, 'Job cancelled');
   }
+}
+
+export async function cancelRepeatingJob(schedulerId: string): Promise<void> {
+  await opekuQueue.removeJobScheduler(schedulerId);
+  await repeatingJobsRepo.remove(schedulerId);
+  log.info({ schedulerId }, 'Repeating job cancelled');
+}
+
+export async function listRepeatingJobs(userId: number): Promise<Array<{ schedulerId: string; cron: string; name: string }>> {
+  const schedulers = await opekuQueue.getJobSchedulers();
+  return schedulers
+    .filter(s => s.id?.startsWith(`user-${userId}-`))
+    .map(s => ({
+      schedulerId: s.id ?? '',
+      cron: s.pattern ?? '',
+      name: (s.template?.data as JobPayload | undefined)?.context ?? s.name ?? '',
+    }));
 }

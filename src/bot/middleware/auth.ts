@@ -11,6 +11,8 @@ export async function authMiddleware(ctx: BotContext, next: NextFunction): Promi
     log.warn({ userId }, 'Unauthorized access attempt');
     if (ctx.message) {
       await ctx.reply('Извини, я личный бот. Доступ закрыт.');
+    } else if (ctx.callbackQuery) {
+      await ctx.answerCallbackQuery('Доступ закрыт.');
     }
     return;
   }

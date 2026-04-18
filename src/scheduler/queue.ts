@@ -8,6 +8,7 @@ const log = createChildLogger('redis');
 export const redisConnection = new IORedis(config.upstashRedisUrl, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
+  ...(config.upstashRedisUrl.startsWith('rediss://') ? { tls: {} } : {}),
 });
 
 redisConnection.on('error', (err: unknown) => {

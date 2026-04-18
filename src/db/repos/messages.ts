@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, gte, count } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { messages, type Message } from '../schema.js';
 import { config } from '../../config.js';
@@ -22,7 +22,9 @@ export const messagesRepo = {
       source: data.source ?? 'text',
       metadata: data.metadata ?? {},
     }).returning();
-    return result[0];
+    const row = result[0];
+    if (!row) throw new Error('DB insert returned no rows');
+    return row;
   },
 
   async getRecent(userId: number, limit = 20): Promise<Message[]> {
@@ -42,5 +44,37 @@ export const messagesRepo = {
       .orderBy(desc(messages.createdAt))
       .limit(1);
     return result[0]?.createdAt ?? null;
+  },
+
+  async getWeeklyStats(userId: number): Promise<{ totalMessages: number }> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const result = await db()
+      .select({ value: count() })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.userId, userId),
+          eq(messages.role, 'user'),
+          gte(messages.createdAt, sevenDaysAgo)
+        )
+      );
+
+    return { totalMessages: Number(result[0]?.value ?? 0) };
+  },
+
+  async getLastUserReplyTime(userId: number): Promise<Date | null> {
+    const result = await db()
+      .select({ createdAt: messages.createdAt })
+      .from(messages)
+      .where(and(eq(messages.userId, userId), eq(messages.role, 'user')))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    return result[0]?.createdAt ?? null;
+  },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    await db().delete(messages).where(eq(messages.userId, userId));
   },
 };

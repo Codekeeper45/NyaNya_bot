@@ -19,7 +19,16 @@ export async function contextMiddleware(ctx: BotContext, next: NextFunction): Pr
     ctx.dbUser = user;
   } catch (err) {
     log.error({ err, telegramId: ctx.from.id }, 'Failed to load user from DB');
-    return; // drop update silently rather than crash
+    try {
+      if (ctx.message) {
+        await ctx.reply('Сейчас не могу подключиться к базе данных. Попробуй еще раз через минуту.');
+      } else if (ctx.callbackQuery) {
+        await ctx.answerCallbackQuery('Временная ошибка подключения к базе данных.');
+      }
+    } catch {
+      // If Telegram API call also fails, just stop processing this update.
+    }
+    return;
   }
 
   await next();

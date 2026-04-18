@@ -1,45 +1,119 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { mcpManager } from '../../mcp/client.js';
+import * as calendar from '../../calendar/client.js';
 import { createChildLogger } from '../../lib/logger.js';
 
-const log = createChildLogger('tool:mcp');
+const log = createChildLogger('tool:calendar');
 
-export function mcpCalendarTools() {
+const NOT_CONNECTED = { error: 'Google Calendar не подключён. Скажи пользователю использовать /gcal.' };
+const AUTH_REVOKED = { error: 'Токен Google Calendar отозван. Скажи пользователю выполнить /gcal для повторного подключения.' };
+
+async function checkConnection(userId: number) {
+  const token = await calendar.getRefreshToken(userId);
+  if (!token) throw new Error('NOT_CONNECTED');
+}
+
+function calendarError(err: unknown): typeof NOT_CONNECTED {
+  if (err instanceof Error && err.message === 'GOOGLE_AUTH_REVOKED') return AUTH_REVOKED;
+  return NOT_CONNECTED;
+}
+
+export function mcpCalendarTools(userId: number, userTimezone: string) {
   return {
-    mcp_gcal_list_events: tool({
-      description: 'Список предстоящих событий Google Calendar',
-      inputSchema: z.object({
-        timeMin: z.string().optional().describe('ISO 8601 начало диапазона'),
-        timeMax: z.string().optional().describe('ISO 8601 конец диапазона'),
-        maxResults: z.number().optional().default(10),
-      }),
-      execute: async (args) => {
+    gcal_list_calendars: tool({
+      description: 'Список всех доступных календарей пользователя.',
+      inputSchema: z.object({}),
+      execute: async () => {
         try {
-          const result = await mcpManager.callTool('google-calendar', 'list-events', args);
-          return result.content;
+          await checkConnection(userId);
+          const calendars = await calendar.listCalendars(userId);
+          return { calendars };
         } catch (err) {
-          log.error({ err }, 'GCal list-events failed');
-          return { error: 'Google Calendar недоступен' };
+          log.warn({ userId, err }, 'Failed to list calendars');
+          return calendarError(err);
         }
       },
     }),
 
-    mcp_gcal_create_event: tool({
-      description: 'Создать событие в Google Calendar',
+    gcal_list_all_events: tool({
+      description: 'Список событий из ВСЕХ календарей пользователя на указанный период. Рекомендуется для общего обзора дня/недели.',
       inputSchema: z.object({
-        summary: z.string().describe('Название события'),
-        start: z.string().describe('ISO 8601 начало'),
-        end: z.string().describe('ISO 8601 конец'),
-        description: z.string().optional(),
+        timeMin: z.string().describe('ISO 8601 начало диапазона (например, 2024-05-24T00:00:00Z)'),
+        timeMax: z.string().describe('ISO 8601 конец диапазона'),
+        maxResults: z.number().optional().default(20),
       }),
-      execute: async (args) => {
+      execute: async ({ timeMin, timeMax, maxResults }) => {
         try {
-          const result = await mcpManager.callTool('google-calendar', 'create-event', args);
-          return result.content;
+          await checkConnection(userId);
+          const events = await calendar.listAllEvents(userId, timeMin, timeMax, maxResults);
+          if (events.length === 0) return { events: [], message: 'Событий в этот период нет.' };
+          return { events };
         } catch (err) {
-          log.error({ err }, 'GCal create-event failed');
-          return { error: 'Не удалось создать событие' };
+          log.warn({ userId, err }, 'Failed to list all events');
+          return calendarError(err);
+        }
+      },
+    }),
+
+    gcal_create_event: tool({
+      description: 'Создать новое событие в календаре.',
+      inputSchema: z.object({
+        summary: z.string().describe('Заголовок события'),
+        start: z.string().describe('ISO 8601 в локальном времени, напр. 2025-04-17T10:00:00. Для дня целиком: 2025-04-17T00:00:00'),
+        end: z.string().describe('ISO 8601 в локальном времени, напр. 2025-04-17T11:00:00. Для дня целиком: 2025-04-17T23:59:00'),
+        description: z.string().optional().describe('Описание события'),
+        location: z.string().optional().describe('Место проведения'),
+        calendarId: z.string().optional().default('primary').describe('ID календаря (по умолчанию основной)'),
+      }),
+      execute: async ({ calendarId, ...event }) => {
+        try {
+          await checkConnection(userId);
+          const result = await calendar.createEvent(userId, { ...event, timeZone: userTimezone }, calendarId);
+          return { created: true, event: result };
+        } catch (err) {
+          log.error({ userId, err }, 'Failed to create event');
+          return calendarError(err);
+        }
+      },
+    }),
+
+    gcal_update_event: tool({
+      description: 'Изменить существующее событие в календаре.',
+      inputSchema: z.object({
+        eventId: z.string().describe('ID события'),
+        calendarId: z.string().optional().default('primary').describe('ID календаря'),
+        summary: z.string().optional(),
+        start: z.string().optional().describe('ISO 8601 в локальном времени, напр. 2025-04-17T10:00:00'),
+        end: z.string().optional().describe('ISO 8601 в локальном времени, напр. 2025-04-17T11:00:00'),
+        description: z.string().optional(),
+        location: z.string().optional(),
+      }),
+      execute: async ({ eventId, calendarId, ...patch }) => {
+        try {
+          await checkConnection(userId);
+          const result = await calendar.updateEvent(userId, eventId, { ...patch, timeZone: userTimezone }, calendarId);
+          return { updated: true, event: result };
+        } catch (err) {
+          log.error({ userId, eventId, err }, 'Failed to update event');
+          return calendarError(err);
+        }
+      },
+    }),
+
+    gcal_delete_event: tool({
+      description: 'Удалить событие из календаря.',
+      inputSchema: z.object({
+        eventId: z.string().describe('ID события'),
+        calendarId: z.string().optional().default('primary').describe('ID календаря'),
+      }),
+      execute: async ({ eventId, calendarId }) => {
+        try {
+          await checkConnection(userId);
+          await calendar.deleteEvent(userId, eventId, calendarId);
+          return { deleted: true, eventId };
+        } catch (err) {
+          log.error({ userId, eventId, err }, 'Failed to delete event');
+          return calendarError(err);
         }
       },
     }),

@@ -8,8 +8,10 @@ import { registerCommands } from './bot/handlers/commands.js';
 import { registerMessageHandler } from './bot/handlers/message.js';
 import { registerVoiceHandler } from './bot/handlers/voice.js';
 import { startWorker } from './scheduler/worker.js';
-import { redisConnection } from './scheduler/queue.js';
-import { mcpManager } from './mcp/client.js';
+import { restoreSchedules } from './scheduler/proactive.js';
+import { redisConnection, opekuQueue } from './scheduler/queue.js';
+import { startCallServer } from './call/server.js';
+import { isTwilioConfigured } from './call/initiate.js';
 
 const log = createChildLogger('main');
 
@@ -25,12 +27,24 @@ registerCommands(bot);
 registerMessageHandler(bot);
 registerVoiceHandler(bot);
 
+// Restore repeating schedules lost from Redis (e.g. after restart)
+restoreSchedules().catch(err => log.error({ err }, 'Failed to restore schedules'));
+
+// Log BullMQ queue-level errors (connection issues, etc.)
+opekuQueue.on('error', (err) => log.error({ err }, 'BullMQ queue error'));
+
+// Start call webhook server only when Twilio is configured
+if (isTwilioConfigured()) startCallServer();
+
 // Start BullMQ worker
 const worker = startWorker();
 
-// Start bot
-bot.start({
+// Start bot (void: bot.start() resolves only when the bot stops — that's expected)
+void bot.start({
   onStart: () => log.info('Opekun bot + worker started (long polling)'),
+}).catch(err => {
+  log.error({ err }, 'Bot start failed');
+  process.exit(1);
 });
 
 // Graceful shutdown
@@ -38,7 +52,6 @@ async function shutdown() {
   log.info('Shutting down...');
   await bot.stop();
   await worker.close();
-  await mcpManager.shutdown();
   await redisConnection.quit();
   process.exit(0);
 }

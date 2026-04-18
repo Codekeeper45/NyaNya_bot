@@ -30,10 +30,11 @@ export function handleError(error: unknown, context?: string): void {
 
 export function setupGlobalErrorHandlers(): void {
   process.on('unhandledRejection', (reason) => {
-    log.error({ err: reason }, 'Unhandled rejection');
+    log.fatal({ err: reason }, 'Unhandled rejection — exiting');
+    process.exit(1);
   });
   process.on('uncaughtException', (error) => {
-    log.fatal({ err: error }, 'Uncaught exception');
+    log.fatal({ err: error }, 'Uncaught exception — exiting');
     process.exit(1);
   });
 }

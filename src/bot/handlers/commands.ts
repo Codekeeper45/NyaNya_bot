@@ -1,10 +1,13 @@
 import type { Bot } from 'grammy';
 import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
+import { messagesRepo } from '../../db/repos/messages.js';
 import { mem0 } from '../../memory/mem0.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
-import { mcpManager } from '../../mcp/client.js';
+
+// Track users who have issued /reset and are awaiting confirmation
+const pendingReset = new Set<number>();
 
 const log = createChildLogger('commands');
 
@@ -50,7 +53,9 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
   botInstance.command('reset', async (ctx) => {
     if (!ctx.dbUser) return;
-    await ctx.reply('⚠️ Это удалит всю мою память о тебе. Уверен(а)?\n\nОтправь "да, сброс" для подтверждения.');
+    pendingReset.add(ctx.dbUser.id);
+    setTimeout(() => pendingReset.delete(ctx.dbUser!.id), 60_000).unref();
+    await ctx.reply('⚠️ Это удалит всю мою память о тебе. Уверен(а)?\n\nОтправь "да, сброс" для подтверждения. Запрос истекает через 60 секунд.');
   });
 
   botInstance.command('gcal', async (ctx) => {
@@ -62,7 +67,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     }
 
     if (ctx.dbUser.googleRefreshToken) {
-      await ctx.reply('✅ Google Calendar уже подключён!\n\nОтправь /gcal\\_reset чтобы отключить.', { parse_mode: 'Markdown' });
+      await ctx.reply('✅ Google Calendar уже подключён!\n\nОтправь /gcal_reset чтобы отключить.');
       return;
     }
 
@@ -81,37 +86,40 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
   botInstance.command('gcal_reset', async (ctx) => {
     if (!ctx.dbUser) return;
     await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: null });
-    await mcpManager.connect('google-calendar');
     await ctx.reply('🗑 Google Calendar отключён. Используй /gcal чтобы подключить снова.');
   });
 
-  // OAuth callback URL handler (inline in text messages)
+  // OAuth callback URL and reset confirmation (single handler to guarantee order)
   botInstance.on('message:text', async (ctx, next) => {
     if (!ctx.dbUser) return next();
-    if (!isOAuthCallbackUrl(ctx.message.text)) return next();
 
-    try {
-      const code = extractCodeFromInput(ctx.message.text);
-      const refreshToken = await exchangeCode(code);
-      await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: refreshToken });
-      await mcpManager.connect('google-calendar');
-      log.info({ userId: ctx.dbUser.id }, 'Google Calendar connected');
-      await ctx.reply('✅ Google Calendar подключён! Попробуй спросить: "что у меня сегодня в календаре?"');
-    } catch (err) {
-      log.error({ err }, 'OAuth exchange failed');
-      const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
-      await ctx.reply(`❌ Не удалось подключить Calendar: ${message}\n\nПопробуй /gcal снова.`);
+    if (isOAuthCallbackUrl(ctx.message.text)) {
+      try {
+        const code = extractCodeFromInput(ctx.message.text);
+        const refreshToken = await exchangeCode(code);
+        await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: refreshToken });
+        log.info({ userId: ctx.dbUser.id }, 'Google Calendar connected');
+        await ctx.reply('✅ Google Calendar подключён! Попробуй спросить: "что у меня сегодня в календаре?"');
+      } catch (err) {
+        log.error({ err }, 'OAuth exchange failed');
+        const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
+        await ctx.reply(`❌ Не удалось подключить Calendar: ${message}\n\nПопробуй /gcal снова.`);
+      }
+      return;
     }
-  });
 
-  // Reset confirmation handler
-  botInstance.on('message:text', async (ctx, next) => {
-    if (!ctx.dbUser) return next();
-    if (ctx.message.text.toLowerCase().trim() !== 'да, сброс') return next();
+    if (ctx.message.text.toLowerCase().trim() === 'да, сброс' && pendingReset.has(ctx.dbUser.id)) {
+      pendingReset.delete(ctx.dbUser.id);
+      const uid = String(ctx.from!.id);
+      await Promise.all([
+        mem0.deleteAll(uid),
+        messagesRepo.deleteAllForUser(ctx.dbUser.id),
+      ]);
+      await ctx.reply('🗑 Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
+      return;
+    }
 
-    const uid = String(ctx.from!.id);
-    await mem0.deleteAll(uid);
-    await ctx.reply('🗑 Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
+    return next();
   });
 
   botInstance.command('who', async (ctx) => {

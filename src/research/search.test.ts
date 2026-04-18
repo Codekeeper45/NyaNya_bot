@@ -1,0 +1,59 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+
+import { webSearch } from './search.js';
+
+beforeEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('webSearch', () => {
+  it('returns parsed search results from Brave API', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        web: {
+          results: [
+            { title: 'Title 1', url: 'https://example.com/1', description: 'Snippet 1' },
+            { title: 'Title 2', url: 'https://example.com/2', description: 'Snippet 2' },
+          ],
+        },
+      }),
+    }));
+
+    const results = await webSearch('тест запрос');
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toEqual({ title: 'Title 1', url: 'https://example.com/1', snippet: 'Snippet 1' });
+  });
+
+  it('passes count parameter in the request URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ web: { results: [] } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await webSearch('query', 10);
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain('count=10');
+  });
+
+  it('returns empty array when API responds with error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: vi.fn().mockResolvedValue({}),
+    }));
+
+    const results = await webSearch('query');
+    expect(results).toEqual([]);
+  });
+
+  it('returns empty array when fetch throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
+
+    const results = await webSearch('query');
+    expect(results).toEqual([]);
+  });
+});

@@ -12,6 +12,13 @@ export const logger = pino({
   }),
 });
 
-export function createChildLogger(module: string) {
-  return logger.child({ module });
+const childLoggers = new Map<string, pino.Logger>();
+
+export function createChildLogger(module: string): pino.Logger {
+  let child = childLoggers.get(module);
+  if (!child) {
+    child = logger.child({ module });
+    childLoggers.set(module, child);
+  }
+  return child;
 }

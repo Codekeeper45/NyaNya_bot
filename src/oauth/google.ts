@@ -5,7 +5,7 @@ const log = createChildLogger('oauth:google');
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const REDIRECT_URI = 'http://localhost:4242';
+const REDIRECT_URI = config.googleOAuthRedirectUri;
 const SCOPES = 'https://www.googleapis.com/auth/calendar';
 
 export function isGoogleOAuthConfigured(): boolean {
@@ -35,7 +35,8 @@ export function extractCodeFromInput(input: string): string {
 
 /** Определяет, является ли сообщение Google OAuth callback URL */
 export function isOAuthCallbackUrl(text: string): boolean {
-  return text.includes('localhost') && text.includes('code=');
+  const t = text.trim();
+  return t.startsWith(REDIRECT_URI) && t.includes('code=');
 }
 
 export async function exchangeCode(code: string): Promise<string> {

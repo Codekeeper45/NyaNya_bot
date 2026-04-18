@@ -4,3 +4,4 @@ dist/
 *.log
 gcal-creds.json
 .worktrees/
+.claude/settings.local.json

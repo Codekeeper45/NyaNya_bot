@@ -5,7 +5,8 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     coverage: { provider: 'v8', reporter: ['text', 'lcov'] },
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**', 'src/e2e/**'],
+    setupFiles: ['src/test/env.ts'],
   },
   resolve: {
     extensionAlias: { '.js': ['.ts', '.js'] },

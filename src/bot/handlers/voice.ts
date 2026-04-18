@@ -4,6 +4,7 @@ import { transcribeVoice, isSTTAvailable } from '../../voice/stt.js';
 import { runOrchestrator } from '../../agent/orchestrator.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { handleError } from '../../lib/errors.js';
+import { withTyping } from '../typing.js';
 
 const log = createChildLogger('handler:voice');
 
@@ -17,24 +18,24 @@ export function registerVoiceHandler(botInstance: Bot<BotContext>): void {
     }
 
     log.debug({ userId: ctx.dbUser.id }, 'Incoming voice message');
-    await ctx.replyWithChatAction('typing');
 
     try {
-      const text = await transcribeVoice(ctx.message.voice.file_id);
+      const text = await withTyping(ctx.api, ctx.chat.id, () => transcribeVoice(ctx.message.voice.file_id));
       log.debug({ text: text.slice(0, 50) }, 'Voice transcribed');
 
-      await runOrchestrator({
-        userId: ctx.dbUser.id,
+      await withTyping(ctx.api, ctx.chat.id, () => runOrchestrator({
+        userId: ctx.dbUser!.id,
         telegramUserId: ctx.from.id,
         telegramChatId: ctx.chat.id,
-        userName: ctx.dbUser.name,
-        userTimezone: ctx.dbUser.timezone,
-        wakeTime: ctx.dbUser.wakeTime ?? undefined,
-        sleepTime: ctx.dbUser.sleepTime ?? undefined,
-        preferences: (ctx.dbUser.preferences as Record<string, unknown>) ?? {},
+        userName: ctx.dbUser!.name,
+        userTimezone: ctx.dbUser!.timezone,
+        wakeTime: ctx.dbUser!.wakeTime ?? undefined,
+        sleepTime: ctx.dbUser!.sleepTime ?? undefined,
+        preferences: (ctx.dbUser!.preferences as Record<string, unknown>) ?? {},
+        onboardingComplete: ctx.dbUser!.onboardingComplete,
         mode: 'reactive',
         userMessage: text,
-      });
+      }));
     } catch (err) {
       handleError(err, 'voice handler');
       await ctx.reply('Не разобрала голосовуху, можешь текстом? 🙏');

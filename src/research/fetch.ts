@@ -13,9 +13,13 @@ export interface FetchResult {
 export async function webFetch(url: string): Promise<FetchResult> {
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'OpekuBot/1.0' },
+      headers: { 'User-Agent': 'OpekunBot/1.0' },
       signal: AbortSignal.timeout(10000),
     });
+    if (!response.ok) {
+      log.warn({ url, status: response.status }, 'Web fetch returned non-OK status');
+      return { title: '', content: '', excerpt: '' };
+    }
     const html = await response.text();
     const dom = new JSDOM(html, { url });
     const reader = new Readability(dom.window.document);

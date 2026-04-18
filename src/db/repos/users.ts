@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { users, type User, type NewUser } from '../schema.js';
 import { config } from '../../config.js';
@@ -19,14 +19,17 @@ export const usersRepo = {
   },
 
   async upsert(data: { telegramUserId: number; name?: string }): Promise<User> {
-    const existing = await this.findByTelegramId(data.telegramUserId);
-    if (existing) return existing;
-
-    const result = await db().insert(users).values({
-      telegramUserId: data.telegramUserId,
-      name: data.name ?? 'User',
-    }).returning();
-    return result[0];
+    const result = await db()
+      .insert(users)
+      .values({ telegramUserId: data.telegramUserId, name: data.name ?? 'User' })
+      .onConflictDoUpdate({
+        target: users.telegramUserId,
+        set: { updatedAt: sql`now()` },
+      })
+      .returning();
+    const row = result[0];
+    if (!row) throw new Error('DB upsert returned no rows');
+    return row;
   },
 
   async update(id: number, data: Partial<Omit<NewUser, 'id' | 'createdAt'>>): Promise<void> {
