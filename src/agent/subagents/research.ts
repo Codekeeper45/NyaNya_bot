@@ -14,10 +14,16 @@ const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
 export async function runResearchAgent(query: string): Promise<string> {
   log.info({ query }, 'Starting research');
 
+  let stepNum = 0;
   const result = await generateText({
     model: openrouter(config.fastModel),
     system: RESEARCH_SYSTEM_PROMPT,
     prompt: query,
+    onStepFinish: ({ toolCalls, toolResults, text }) => {
+      stepNum++;
+      const toolNames = toolCalls?.map(t => t.toolName).join(', ') || 'none';
+      log.info({ step: stepNum, tools: toolNames, hasText: !!text?.trim() }, 'Research step done');
+    },
     tools: {
       web_search: tool({
         description: 'Search the web for information',

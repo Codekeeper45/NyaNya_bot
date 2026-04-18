@@ -14,7 +14,7 @@ export async function webFetch(url: string): Promise<FetchResult> {
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': 'OpekunBot/1.0' },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
       log.warn({ url, status: response.status }, 'Web fetch returned non-OK status');
