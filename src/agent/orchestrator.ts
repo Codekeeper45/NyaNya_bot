@@ -8,6 +8,7 @@ import { messagesRepo } from '../db/repos/messages.js';
 import { listRepeatingJobs } from '../scheduler/jobs.js';
 import { allTools } from './tools/index.js';
 import { bot } from '../bot/bot.js';
+import { markdownToHtml } from './tools/messaging.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('orchestrator');
@@ -48,6 +49,8 @@ export interface OrchestratorInput {
   userTimezone: string;
   wakeTime?: string;
   sleepTime?: string;
+  weekendWakeTime?: string;
+  weekendSleepTime?: string;
   preferences?: Record<string, unknown>;
   mode: 'reactive' | 'proactive';
   userMessage?: string;
@@ -84,11 +87,14 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
 
   let systemPrompt = buildSystemPrompt({
     userName: input.userName,
+    userId: input.userId,
     userTimezone: input.userTimezone,
     currentTime,
     memories,
     wakeTime: input.wakeTime,
     sleepTime: input.sleepTime,
+    weekendWakeTime: input.weekendWakeTime,
+    weekendSleepTime: input.weekendSleepTime,
     preferences: input.preferences,
     activeJobs,
     onboardingComplete: input.onboardingComplete,
@@ -151,6 +157,31 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     temperature: 0.7,
   });
 
+  // Log tool calls per step
+  for (const [i, step] of result.steps.entries()) {
+    for (const call of step.toolCalls ?? []) {
+      const c = call as { toolName: string; input: unknown };
+      log.info({
+        userId: input.userId,
+        step: i + 1,
+        tool: c.toolName,
+        input: JSON.stringify(c.input ?? {}).slice(0, 200),
+      }, `→ tool call`);
+    }
+    for (const res of step.toolResults ?? []) {
+      const r = res as { toolName: string; output: unknown };
+      const preview = typeof r.output === 'object' && r.output !== null
+        ? JSON.stringify(r.output).slice(0, 150)
+        : String(r.output ?? '').slice(0, 150);
+      log.info({
+        userId: input.userId,
+        step: i + 1,
+        tool: r.toolName,
+        output: preview,
+      }, `← tool result`);
+    }
+  }
+
   log.info({ userId: input.userId, steps: result.steps.length, onboardingCompleted: getOnboardingCompleted() }, 'Orchestrator completed');
 
   // 6. Fallback: если модель не вызвала message_send_text — отправляем result.text напрямую
@@ -158,7 +189,11 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     const clean = extractCleanText(result.text);
     if (clean) {
       log.warn({ userId: input.userId }, 'Model did not call message_send_text — sending extracted fallback text');
-      await bot.api.sendMessage(input.telegramChatId, clean);
+      try {
+        await bot.api.sendMessage(input.telegramChatId, markdownToHtml(clean), { parse_mode: 'HTML' });
+      } catch {
+        await bot.api.sendMessage(input.telegramChatId, clean);
+      }
       await messagesRepo.create({
         userId: input.userId,
         role: 'assistant',

@@ -14,47 +14,61 @@ const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
 export async function runResearchAgent(query: string): Promise<string> {
   log.info({ query }, 'Starting research');
 
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    log.warn({ query }, 'Research timeout reached (90s), aborting');
+    abortController.abort();
+  }, 90_000);
+
   let stepNum = 0;
-  const result = await generateText({
-    model: openrouter(config.fastModel),
-    system: RESEARCH_SYSTEM_PROMPT,
-    prompt: query,
-    onStepFinish: ({ toolCalls, toolResults, text }) => {
-      stepNum++;
-      const toolNames = toolCalls?.map(t => t.toolName).join(', ') || 'none';
-      log.info({ step: stepNum, tools: toolNames, hasText: !!text?.trim() }, 'Research step done');
-    },
-    tools: {
-      web_search: tool({
-        description: 'Search the web for information',
-        inputSchema: z.object({
-          query: z.string().describe('Search query'),
-          count: z.number().optional().default(5),
-        }),
-        execute: async ({ query, count }) => {
-          const results = await webSearch(query, count);
-          return { results };
-        },
-      }),
-      web_read: tool({
-        description: 'Read and extract content from a URL',
-        inputSchema: z.object({
-          url: z.string().describe('URL to fetch'),
-        }),
-        execute: async ({ url }) => {
-          return await webFetch(url);
-        },
-      }),
-    },
-    stopWhen: stepCountIs(20),
-    temperature: 0.3,
-  });
+  let collectedText = '';
 
-  const text = result.steps
-    .map(s => s.text)
-    .filter(Boolean)
-    .join('\n');
+  try {
+    const result = await generateText({
+      model: openrouter(config.fastModel),
+      system: RESEARCH_SYSTEM_PROMPT,
+      prompt: query,
+      abortSignal: abortController.signal,
+      onStepFinish: ({ toolCalls, text }) => {
+        stepNum++;
+        const toolNames = toolCalls?.map(t => t.toolName).join(', ') || 'none';
+        log.info({ step: stepNum, tools: toolNames, hasText: !!text?.trim() }, 'Research step done');
+        if (text?.trim()) collectedText += text + '\n';
+      },
+      tools: {
+        web_search: tool({
+          description: 'Search the web for information',
+          inputSchema: z.object({
+            query: z.string().describe('Search query'),
+            count: z.number().optional().default(3),
+          }),
+          execute: async ({ query, count }) => {
+            const results = await webSearch(query, count);
+            return { results };
+          },
+        }),
+        web_read: tool({
+          description: 'Read and extract content from a URL',
+          inputSchema: z.object({
+            url: z.string().describe('URL to fetch'),
+          }),
+          execute: async ({ url }) => {
+            return await webFetch(url);
+          },
+        }),
+      },
+      stopWhen: stepCountIs(6),
+      temperature: 0.3,
+    });
 
-  log.info({ query, steps: result.steps.length, resultLen: text.length }, 'Research complete');
-  return text || 'Не удалось найти информацию.';
+    const text = result.steps.map(s => s.text).filter(Boolean).join('\n');
+    log.info({ query, steps: result.steps.length, resultLen: text.length }, 'Research complete');
+    return text || 'Не удалось найти информацию.';
+  } catch (err: unknown) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    log.warn({ query, steps: stepNum, isAbort }, 'Research ended early');
+    return collectedText.trim() || 'Не удалось найти информацию (превышено время ожидания).';
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }

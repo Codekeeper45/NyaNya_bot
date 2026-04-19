@@ -7,6 +7,8 @@ export const users = pgTable('users', {
   timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Almaty'),
   wakeTime: varchar('wake_time', { length: 5 }).default('08:00'),
   sleepTime: varchar('sleep_time', { length: 5 }).default('23:00'),
+  weekendWakeTime: varchar('weekend_wake_time', { length: 5 }),
+  weekendSleepTime: varchar('weekend_sleep_time', { length: 5 }),
   breakfastTime: varchar('breakfast_time', { length: 5 }),
   lunchTime: varchar('lunch_time', { length: 5 }),
   dinnerTime: varchar('dinner_time', { length: 5 }),
@@ -19,6 +21,8 @@ export const users = pgTable('users', {
     dietary?: string[];
     interests?: string[];
     study_subjects?: string[];
+    message_length?: 'short' | 'normal' | 'detailed';
+    followup_max_attempts?: number;
   }>().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -89,6 +93,33 @@ export const habitLogs = pgTable('habit_logs', {
   done: boolean('done').notNull(),
 }, (t) => [unique('habit_logs_habit_date_unique').on(t.habitId, t.date)]);
 
+export const expenses = pgTable('expenses', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  amount: text('amount').notNull(), // stored as string to avoid float precision issues
+  currency: varchar('currency', { length: 10 }).notNull().default('KZT'),
+  category: varchar('category', { length: 100 }),
+  note: varchar('note', { length: 500 }),
+  date: varchar('date', { length: 10 }).notNull(), // YYYY-MM-DD
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const todos = pgTable('todos', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  text: varchar('text', { length: 1000 }).notNull(),
+  done: boolean('done').notNull().default(false),
+  deadline: timestamp('deadline'),
+  doneAt: timestamp('done_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const jobSkipOnce = pgTable('job_skip_once', {
+  id: serial('id').primaryKey(),
+  schedulerId: varchar('scheduler_id', { length: 255 }).notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -98,3 +129,7 @@ export type LessonPlan = typeof lessonPlans.$inferSelect;
 export type RepeatingJob = typeof repeatingJobs.$inferSelect;
 export type Habit = typeof habits.$inferSelect;
 export type HabitLog = typeof habitLogs.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type Todo = typeof todos.$inferSelect;
+export type JobSkipOnce = typeof jobSkipOnce.$inferSelect;
+export type NewJobSkipOnce = typeof jobSkipOnce.$inferInsert;

@@ -14,6 +14,8 @@ export function makeUser(overrides: Partial<User> = {}): User {
     timezone: 'Asia/Almaty',
     wakeTime: '08:00',
     sleepTime: '23:00',
+    weekendWakeTime: null,
+    weekendSleepTime: null,
     breakfastTime: null,
     lunchTime: null,
     dinnerTime: null,

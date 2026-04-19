@@ -39,7 +39,7 @@ export function createMockRepeatingJobsRepo() {
   return {
     upsert: vi.fn().mockResolvedValue({ id: 1 }),
     remove: vi.fn().mockResolvedValue(undefined),
-    findByUserId: vi.fn().mockResolvedValue([]),
+    findByUser: vi.fn().mockResolvedValue([]),
   };
 }
 

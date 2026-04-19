@@ -12,6 +12,9 @@ import { researchTools } from './research.js';
 import { diagramTools } from './diagram.js';
 import { habitTools } from './habits.js';
 import { callTools } from './call.js';
+import { expenseTools } from './expenses.js';
+import { todoTools } from './todos.js';
+import { planTools } from './plans.js';
 
 export function allTools(ctx: OrchestratorInput) {
   const { tools: msgTools, wasSent } = messagingTools(ctx.telegramChatId, ctx.userId);
@@ -33,6 +36,9 @@ export function allTools(ctx: OrchestratorInput) {
     ...callTools(ctx.userId, ctx.telegramChatId, ctx.userName, ctx.userTimezone),
     ...subagentTools(),
     ...mcpCalendarTools(ctx.userId, ctx.userTimezone),
+    ...expenseTools(ctx.userId, ctx.userTimezone),
+    ...todoTools(ctx.userId, ctx.userTimezone),
+    ...planTools(ctx.userId, ctx.telegramUserId, ctx.telegramChatId, ctx.userTimezone),
   };
 
   return { tools, wasSent, getOnboardingCompleted: () => onboardingCompleted };

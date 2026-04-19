@@ -5,9 +5,11 @@ import { usersRepo } from '../db/repos/users.js';
 import { messagesRepo } from '../db/repos/messages.js';
 import { lessonPlansRepo } from '../db/repos/lesson_plans.js';
 import { habitsRepo } from '../db/repos/habits.js';
+import { todosRepo } from '../db/repos/todos.js';
 import type { JobPayload } from './jobs.js';
 import { scheduleFollowup } from './proactive.js';
 import { callUser, isTwilioConfigured } from '../call/initiate.js';
+import { jobSkipOnceRepo } from '../db/repos/job_skip_once.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('worker');
@@ -26,6 +28,13 @@ export function startWorker(): Worker<JobPayload> {
       }
       if (user.paused) {
         log.info({ userId, kind }, 'User paused, skipping job');
+        return;
+      }
+
+      const skipId = job.data.schedulerId;
+      if (skipId && await jobSkipOnceRepo.shouldSkip(skipId)) {
+        await jobSkipOnceRepo.clear(skipId);
+        log.info({ userId, kind, schedulerId: skipId }, 'Job skipped once by user request');
         return;
       }
 
@@ -95,6 +104,26 @@ export function startWorker(): Worker<JobPayload> {
         } catch { /* ignore habits error */ }
       }
 
+      // For daily_planning: enrich with todos + habits
+      if (kind === 'daily_planning') {
+        try {
+          const todayDate = new Date().toLocaleDateString('sv-SE', { timeZone: user.timezone });
+          const [activeTodos, todayLogs] = await Promise.all([
+            todosRepo.list(userId, false),
+            habitsRepo.getTodayLogs(userId, todayDate),
+          ]);
+          const todoLines = activeTodos.length > 0
+            ? activeTodos.map(t => `- [${t.id}] ${t.text}${t.deadline ? ` (до ${t.deadline.toLocaleDateString('ru-RU')})` : ''}`).join('\n')
+            : 'нет активных задач';
+          const habitLines = todayLogs.length > 0
+            ? todayLogs.map(({ habit, log }) => `- ${habit.name}: ${log === null ? 'не отмечено' : log.done ? '✓' : '✗'}`).join('\n')
+            : 'привычки не настроены';
+          proactiveContext = `Дневное планирование.\n\nАктивные задачи:\n${todoLines}\n\nПривычки сегодня:\n${habitLines}`;
+        } catch (err) {
+          log.error({ err, userId }, 'Failed to enrich daily_planning context');
+        }
+      }
+
       // Special handling for weekly digest to provide stats
       if (kind === 'weekly_digest') {
         try {
@@ -114,6 +143,8 @@ export function startWorker(): Worker<JobPayload> {
         userTimezone: user.timezone,
         wakeTime: user.wakeTime ?? undefined,
         sleepTime: user.sleepTime ?? undefined,
+        weekendWakeTime: user.weekendWakeTime ?? undefined,
+        weekendSleepTime: user.weekendSleepTime ?? undefined,
         preferences: (user.preferences as Record<string, unknown>) ?? {},
         onboardingComplete: user.onboardingComplete,
         mode: 'proactive',

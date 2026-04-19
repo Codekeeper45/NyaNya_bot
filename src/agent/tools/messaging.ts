@@ -8,16 +8,17 @@ import { createChildLogger } from '../../lib/logger.js';
 
 const log = createChildLogger('tool:messaging');
 
-function markdownToHtml(text: string): string {
+export function markdownToHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
     .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>')
-    .replace(/__(.+?)__/gs, '<b>$1</b>')
-    .replace(/\*(.+?)\*/gs, '<i>$1</i>');
+    .replace(/^#{1,3} (.+)$/gm, '<b>$1</b>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/__(.+?)__/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<i>$1</i>');
 }
 
 export function messagingTools(chatId: number, userId: number) {
@@ -76,6 +77,7 @@ export function messagingTools(chatId: number, userId: number) {
           // Fallback to text if TTS fails
           log.warn('TTS failed, falling back to text');
           await bot.api.sendMessage(chatId, text);
+          sent = true;
           await messagesRepo.create({
             userId,
             role: 'assistant',

@@ -1,6 +1,7 @@
 import { opekuQueue } from './queue.js';
 import { jobsRepo } from '../db/repos/jobs.js';
 import { repeatingJobsRepo } from '../db/repos/repeating_jobs.js';
+import { jobSkipOnceRepo } from '../db/repos/job_skip_once.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('jobs');
@@ -22,6 +23,7 @@ export interface JobPayload {
   telegramChatId: number;
   kind: JobKind;
   context: string;
+  schedulerId?: string;
   attemptNumber?: number;
   metadata?: Record<string, unknown>;
 }
@@ -49,16 +51,17 @@ export async function scheduleRepeatingJob(
   cronPattern: string,
   timezone: string,
 ): Promise<void> {
+  const payloadWithId: JobPayload = { ...payload, schedulerId };
   await opekuQueue.upsertJobScheduler(
     schedulerId,
     { pattern: cronPattern, tz: timezone },
-    { name: payload.kind, data: payload },
+    { name: payload.kind, data: payloadWithId },
   );
   await repeatingJobsRepo.upsert({
     userId: payload.userId,
     schedulerId,
     kind: payload.kind,
-    payload: payload as unknown as Record<string, unknown>,
+    payload: payloadWithId as unknown as Record<string, unknown>,
     cronPattern,
     timezone,
   });
@@ -74,17 +77,18 @@ export async function cancelJob(bullJobId: string): Promise<void> {
 }
 
 export async function cancelRepeatingJob(schedulerId: string): Promise<void> {
-  await opekuQueue.removeJobScheduler(schedulerId);
+  await jobSkipOnceRepo.clear(schedulerId);
   await repeatingJobsRepo.remove(schedulerId);
+  await opekuQueue.removeJobScheduler(schedulerId);
   log.info({ schedulerId }, 'Repeating job cancelled');
 }
 
 export async function listRepeatingJobs(userId: number): Promise<Array<{ schedulerId: string; cron: string; name: string }>> {
   const schedulers = await opekuQueue.getJobSchedulers();
   return schedulers
-    .filter(s => s.id?.startsWith(`user-${userId}-`))
+    .filter(s => s.key?.startsWith(`user-${userId}-`))
     .map(s => ({
-      schedulerId: s.id ?? '',
+      schedulerId: s.key ?? '',
       cron: s.pattern ?? '',
       name: (s.template?.data as JobPayload | undefined)?.context ?? s.name ?? '',
     }));

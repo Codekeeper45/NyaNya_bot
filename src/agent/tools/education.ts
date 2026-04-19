@@ -96,7 +96,7 @@ export function educationTools(
     }),
 
     education_schedule: tool({
-      description: 'Поставить учебный план в расписание. Создаёт повторяющийся урок по дням недели. После создания бот будет автоматически готовить и присылать материалы урока.',
+      description: 'Поставить учебный план в расписание повторяющихся уроков. После вызова: 1) проверь scheduled: true, 2) сообщи пользователю какой план, в какие дни и в какое время запланирован. Если scheduled: false или error — скажи об ошибке и не подтверждай создание.',
       inputSchema: z.object({
         planId: z.number().describe('ID учебного плана (из education_list_plans)'),
         days: z.array(z.number().min(0).max(6)).describe('Дни недели: 0=вс, 1=пн, 2=вт, 3=ср, 4=чт, 5=пт, 6=сб'),
@@ -148,7 +148,7 @@ export function educationTools(
     }),
 
     education_unschedule: tool({
-      description: 'Отменить расписание уроков по учебному плану.',
+      description: 'Отменить расписание уроков по учебному плану. Если расписание не было активным — всё равно вернётся cancelled: true, это нормально. Не говори "отменил" до получения ответа.',
       inputSchema: z.object({
         planId: z.number().describe('ID учебного плана'),
       }),

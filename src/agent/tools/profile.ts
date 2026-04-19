@@ -16,7 +16,10 @@ export function profileTools(userId: number) {
           timezone: user.timezone,
           wakeTime: user.wakeTime,
           sleepTime: user.sleepTime,
+          weekendWakeTime: user.weekendWakeTime,
+          weekendSleepTime: user.weekendSleepTime,
           preferences: user.preferences,
+          paused: user.paused,
         };
       },
     }),
@@ -50,6 +53,39 @@ export function profileTools(userId: number) {
         }
         await usersRepo.update(userId, data as Partial<Omit<User, 'id' | 'createdAt'>>);
         return { updated: true, fields: Object.keys(data) };
+      },
+    }),
+
+    bot_settings_update: tool({
+      description: `Обновить настройки поведения бота. Вызывай автоматически когда:
+- Пользователь просит писать короче/подробнее → message_length
+- Пользователь не отвечает на follow-up несколько раз → followup_max_attempts: 1 или 2
+- Пользователь просит отвечать голосом → voice_default: true
+- Пользователь просит поставить на паузу → paused: true
+- Пользователь называет интересы, диету, темы → обновляй соответствующие поля`,
+      inputSchema: z.object({
+        voice_default: z.boolean().optional().describe('Отвечать голосом по умолчанию'),
+        message_length: z.enum(['short', 'normal', 'detailed']).optional().describe('Длина ответов: short=кратко, normal=обычно, detailed=подробно'),
+        followup_max_attempts: z.number().min(1).max(4).optional().describe('Макс. число follow-up попыток (1–4)'),
+        interests: z.array(z.string()).optional().describe('Интересы и хобби'),
+        dietary: z.array(z.string()).optional().describe('Диетические ограничения'),
+        study_subjects: z.array(z.string()).optional().describe('Темы для обучения'),
+        paused: z.boolean().optional().describe('Поставить бота на паузу (не пишет первым)'),
+      }),
+      execute: async (settings) => {
+        const user = await usersRepo.findById(userId);
+        const existing = (user?.preferences ?? {}) as Record<string, unknown>;
+
+        const { paused, ...prefFields } = settings;
+        const newPrefs = { ...existing, ...Object.fromEntries(
+          Object.entries(prefFields).filter(([, v]) => v !== undefined),
+        ) };
+
+        const data: Record<string, unknown> = { preferences: newPrefs };
+        if (paused !== undefined) data.paused = paused;
+
+        await usersRepo.update(userId, data as Partial<Omit<User, 'id' | 'createdAt'>>);
+        return { updated: true, settings: { ...prefFields, ...(paused !== undefined ? { paused } : {}) } };
       },
     }),
   };

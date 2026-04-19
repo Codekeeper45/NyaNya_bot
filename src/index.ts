@@ -15,6 +15,8 @@ import { isTwilioConfigured } from './call/initiate.js';
 
 const log = createChildLogger('main');
 
+log.info({ buildTime: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), pid: process.pid }, '🚀 Opekun starting');
+
 setupGlobalErrorHandlers();
 
 // Middleware chain

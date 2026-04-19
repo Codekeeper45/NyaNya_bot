@@ -12,6 +12,8 @@ export async function setupUserSchedules(
     timezone: string;
     wakeTime: string;
     sleepTime: string;
+    weekendWakeTime?: string | null;
+    weekendSleepTime?: string | null;
   },
   chatId: number,
   meals: {
@@ -26,7 +28,8 @@ export async function setupUserSchedules(
     telegramChatId: chatId,
   };
 
-  function parseTime(t: string, fallback: [number, number]): [number, number] {
+  function parseTime(t: string | null | undefined, fallback: [number, number]): [number, number] {
+    if (!t) return fallback;
     const [h, m] = t.split(':').map(Number);
     return (isNaN(h) || isNaN(m)) ? fallback : [h, m];
   }
@@ -37,13 +40,31 @@ export async function setupUserSchedules(
   const [dinnerH, dinnerM] = parseTime(meals.dinnerTime, [19, 0]);
   const [sleepH, sleepM] = parseTime(user.sleepTime, [23, 0]);
 
-  // Morning greeting at wake time
-  await scheduleRepeatingJob(
-    `user-${user.id}-morning`,
-    { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
-    `${wakeM} ${wakeH} * * *`,
-    user.timezone,
-  );
+  const hasWeekendWake = user.weekendWakeTime && user.weekendWakeTime !== user.wakeTime;
+  const hasWeekendSleep = user.weekendSleepTime && user.weekendSleepTime !== user.sleepTime;
+
+  if (hasWeekendWake) {
+    const [wwH, wwM] = parseTime(user.weekendWakeTime, [wakeH, wakeM]);
+    await scheduleRepeatingJob(
+      `user-${user.id}-morning-weekday`,
+      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
+      `${wakeM} ${wakeH} * * 1,2,3,4,5`,
+      user.timezone,
+    );
+    await scheduleRepeatingJob(
+      `user-${user.id}-morning-weekend`,
+      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
+      `${wwM} ${wwH} * * 0,6`,
+      user.timezone,
+    );
+  } else {
+    await scheduleRepeatingJob(
+      `user-${user.id}-morning`,
+      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
+      `${wakeM} ${wakeH} * * *`,
+      user.timezone,
+    );
+  }
 
   // Breakfast reminder
   await scheduleRepeatingJob(
@@ -72,12 +93,31 @@ export async function setupUserSchedules(
   // Evening reflection: 1 hour before sleep
   let reflectH = sleepH - 1;
   if (reflectH < 0) reflectH += 24;
-  await scheduleRepeatingJob(
-    `user-${user.id}-reflection`,
-    { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
-    `${sleepM} ${reflectH} * * *`,
-    user.timezone,
-  );
+
+  if (hasWeekendSleep) {
+    const [wsH, wsM] = parseTime(user.weekendSleepTime, [sleepH, sleepM]);
+    let weekendReflectH = wsH - 1;
+    if (weekendReflectH < 0) weekendReflectH += 24;
+    await scheduleRepeatingJob(
+      `user-${user.id}-reflection-weekday`,
+      { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
+      `${sleepM} ${reflectH} * * 1,2,3,4,5`,
+      user.timezone,
+    );
+    await scheduleRepeatingJob(
+      `user-${user.id}-reflection-weekend`,
+      { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
+      `${wsM} ${weekendReflectH} * * 0,6`,
+      user.timezone,
+    );
+  } else {
+    await scheduleRepeatingJob(
+      `user-${user.id}-reflection`,
+      { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
+      `${sleepM} ${reflectH} * * *`,
+      user.timezone,
+    );
+  }
 
   // Weekly educational suggestion: Sunday at 16:00
   await scheduleRepeatingJob(
@@ -100,12 +140,21 @@ export async function setupUserSchedules(
 
 export async function restoreSchedules(): Promise<void> {
   const stored = await repeatingJobsRepo.findAll();
-  if (stored.length === 0) return;
+  const storedIds = new Set(stored.map(j => j.schedulerId));
 
-  // Get currently registered schedulers from Redis
   const existing = await opekuQueue.getJobSchedulers();
-  const existingIds = new Set(existing.map(s => s.id));
+  const existingIds = new Set(existing.map(s => s.key));
 
+  // Remove from Redis anything not in DB (orphaned entries)
+  let removed = 0;
+  for (const s of existing) {
+    if (s.key && s.key.startsWith('user-') && !storedIds.has(s.key)) {
+      await opekuQueue.removeJobScheduler(s.key);
+      removed++;
+    }
+  }
+
+  // Add to Redis anything in DB but missing from Redis
   let restored = 0;
   for (const job of stored) {
     if (existingIds.has(job.schedulerId)) continue;
@@ -116,7 +165,8 @@ export async function restoreSchedules(): Promise<void> {
     );
     restored++;
   }
-  log.info({ total: stored.length, restored }, 'Schedules restored from DB');
+
+  log.info({ total: stored.length, restored, removed }, 'Schedules synced with DB');
 }
 
 export async function scheduleFollowup(
