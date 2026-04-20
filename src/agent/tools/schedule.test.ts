@@ -19,6 +19,9 @@ vi.mock('../../db/repos/jobs.js', () => ({
 vi.mock('../../db/repos/repeating_jobs.js', () => ({
   repeatingJobsRepo: { findByUser: vi.fn().mockResolvedValue([]), upsert: vi.fn(), remove: vi.fn(), findAll: vi.fn().mockResolvedValue([]) },
 }));
+vi.mock('../../db/repos/job_skip_once.js', () => ({
+  jobSkipOnceRepo: { set: vi.fn(), shouldSkip: vi.fn().mockResolvedValue(false), clear: vi.fn() },
+}));
 
 import {
   scheduleJob,
@@ -112,7 +115,7 @@ describe('schedule_list', () => {
     const result = await tools.schedule_list.execute({}, {} as never);
 
     expect(mockListRepeating).toHaveBeenCalledWith(5);
-    expect(result).toEqual({ reminders: [{ schedulerId: 'user-5-sport', cron: '0 9 * * 1', name: 'Тренировка' }] });
+    expect(result).toEqual({ reminders: [{ schedulerId: 'user-5-sport', cron: '0 9 * * 1', name: 'Тренировка', skipNext: false }] });
   });
 });
 

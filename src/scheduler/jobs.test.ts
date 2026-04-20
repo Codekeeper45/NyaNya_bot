@@ -15,6 +15,9 @@ vi.mock('../db/repos/jobs.js', () => ({
 vi.mock('../db/repos/repeating_jobs.js', () => ({
   repeatingJobsRepo: { upsert: vi.fn(), remove: vi.fn() },
 }));
+vi.mock('../db/repos/job_skip_once.js', () => ({
+  jobSkipOnceRepo: { clear: vi.fn().mockResolvedValue(undefined) },
+}));
 
 import { opekuQueue } from './queue.js';
 import { jobsRepo } from '../db/repos/jobs.js';
@@ -98,7 +101,7 @@ describe('scheduleRepeatingJob', () => {
     expect(mockUpsert).toHaveBeenCalledWith(
       'user-1-sport',
       { pattern: '0 9 * * 1', tz: 'Asia/Almaty' },
-      { name: 'custom_reminder', data: payload },
+      { name: 'custom_reminder', data: { ...payload, schedulerId: 'user-1-sport' } },
     );
   });
 });
@@ -116,9 +119,9 @@ describe('cancelRepeatingJob', () => {
 describe('listRepeatingJobs', () => {
   it('returns only jobs for the given userId by prefix', async () => {
     mockGetSchedulers.mockResolvedValue([
-      { id: 'user-1-sport', pattern: '0 9 * * 1', template: { data: { context: 'Тренировка' } } },
-      { id: 'user-2-water', pattern: '0 */2 * * *', template: { data: { context: 'Вода' } } },
-      { id: 'user-1-water', pattern: '30 8 * * *', template: { data: { context: 'Стакан воды' } } },
+      { key: 'user-1-sport', pattern: '0 9 * * 1', template: { data: { context: 'Тренировка' } } },
+      { key: 'user-2-water', pattern: '0 */2 * * *', template: { data: { context: 'Вода' } } },
+      { key: 'user-1-water', pattern: '30 8 * * *', template: { data: { context: 'Стакан воды' } } },
     ]);
 
     const jobs = await listRepeatingJobs(1);
@@ -129,7 +132,7 @@ describe('listRepeatingJobs', () => {
 
   it('returns schedulerId, cron, and name for each job', async () => {
     mockGetSchedulers.mockResolvedValue([
-      { id: 'user-1-morning', pattern: '0 7 * * *', template: { data: { context: 'Доброе утро' } } },
+      { key: 'user-1-morning', pattern: '0 7 * * *', template: { data: { context: 'Доброе утро' } } },
     ]);
 
     const jobs = await listRepeatingJobs(1);

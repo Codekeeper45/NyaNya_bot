@@ -60,7 +60,10 @@ vi.mock('../db/repos/repeating_jobs.js', () => ({
   },
 }));
 
-vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../db/client.js', () => ({ db: {}, getDb: () => ({}) }));
+vi.mock('../db/repos/job_skip_once.js', () => ({
+  jobSkipOnceRepo: { set: vi.fn(), shouldSkip: vi.fn().mockResolvedValue(false), clear: vi.fn() },
+}));
 
 import { scheduleTools } from '../agent/tools/schedule.js';
 

@@ -25,17 +25,17 @@ describe('subagent_research', () => {
     const tools = subagentTools();
     const result = await tools.subagent_research.execute({ query: 'Как учиться быстро', depth: 'shallow' }, {} as never);
 
-    expect(mockResearch).toHaveBeenCalledWith('Как учиться быстро', 'shallow');
+    expect(mockResearch).toHaveBeenCalledWith('Как учиться быстро');
     expect(result).toEqual({ summary: 'Краткое резюме исследования' });
   });
 
-  it('supports depth: deep', async () => {
+  it('ignores depth parameter (runResearchAgent takes only query)', async () => {
     mockResearch.mockResolvedValue('Подробное резюме');
 
     const tools = subagentTools();
     await tools.subagent_research.execute({ query: 'Квантовая физика', depth: 'deep' }, {} as never);
 
-    expect(mockResearch).toHaveBeenCalledWith('Квантовая физика', 'deep');
+    expect(mockResearch).toHaveBeenCalledWith('Квантовая физика');
   });
 });
 
