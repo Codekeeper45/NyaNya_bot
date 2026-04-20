@@ -2,7 +2,7 @@ import { generateText, tool, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { config } from '../../config.js';
-import { webSearch } from '../../research/search.js';
+import { webSearch, newsSearch } from '../../research/search.js';
 import { webFetch } from '../../research/fetch.js';
 import { RESEARCH_SYSTEM_PROMPT } from '../prompts/subagents.js';
 import { createChildLogger } from '../../lib/logger.js';
@@ -22,6 +22,7 @@ export async function runResearchAgent(query: string): Promise<string> {
 
   let stepNum = 0;
   let collectedText = '';
+  const searchSnippets: string[] = [];
 
   try {
     const result = await generateText({
@@ -29,15 +30,28 @@ export async function runResearchAgent(query: string): Promise<string> {
       system: RESEARCH_SYSTEM_PROMPT,
       prompt: query,
       abortSignal: abortController.signal,
-      onStepFinish: ({ toolCalls, text }) => {
+      onStepFinish: ({ toolCalls, toolResults, text }) => {
         stepNum++;
         const toolNames = toolCalls?.map(t => t.toolName).join(', ') || 'none';
         log.info({ step: stepNum, tools: toolNames, hasText: !!text?.trim() }, 'Research step done');
         if (text?.trim()) collectedText += text + '\n';
+        for (const tr of (toolResults ?? []) as Array<{ toolName: string; output: unknown }>) {
+          if (tr.toolName === 'web_search' || tr.toolName === 'news_search') {
+            const results = (tr.output as { results?: Array<{ title: string; snippet?: string; url: string; extraSnippets?: string[] }> }).results ?? [];
+            for (const r of results) {
+              if (r.snippet) {
+                const extras = r.extraSnippets?.join(' ') ?? '';
+                searchSnippets.push(extras
+                  ? `${r.title}: ${r.snippet} ${extras} (${r.url})`
+                  : `${r.title}: ${r.snippet} (${r.url})`);
+              }
+            }
+          }
+        }
       },
       tools: {
         web_search: tool({
-          description: 'Search the web for information',
+          description: 'Search the web for information. Call multiple times in one step for parallel search.',
           inputSchema: z.object({
             query: z.string().describe('Search query'),
             count: z.number().optional().default(3),
@@ -47,13 +61,34 @@ export async function runResearchAgent(query: string): Promise<string> {
             return { results };
           },
         }),
+        news_search: tool({
+          description: 'Search recent news articles. Use for current events, game/app releases, announcements, updates.',
+          inputSchema: z.object({
+            query: z.string().describe('News search query'),
+            count: z.number().optional().default(5),
+          }),
+          execute: async ({ query, count }) => {
+            const results = await newsSearch(query, count);
+            return { results };
+          },
+        }),
         web_read: tool({
-          description: 'Read and extract content from a URL',
+          description: 'Read content from a single URL.',
           inputSchema: z.object({
             url: z.string().describe('URL to fetch'),
           }),
           execute: async ({ url }) => {
             return await webFetch(url);
+          },
+        }),
+        web_read_many: tool({
+          description: 'Read 2-3 URLs in parallel. Prefer over multiple web_read calls when you have several URLs.',
+          inputSchema: z.object({
+            urls: z.array(z.string()).min(1).max(3).describe('URLs to fetch in parallel'),
+          }),
+          execute: async ({ urls }) => {
+            const results = await Promise.all(urls.map(url => webFetch(url)));
+            return results.map((r, i) => ({ url: urls[i], ...r }));
           },
         }),
       },
@@ -67,7 +102,12 @@ export async function runResearchAgent(query: string): Promise<string> {
   } catch (err: unknown) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     log.warn({ query, steps: stepNum, isAbort }, 'Research ended early');
-    return collectedText.trim() || 'Не удалось найти информацию (превышено время ожидания).';
+    if (collectedText.trim()) return collectedText.trim();
+    if (searchSnippets.length > 0) {
+      log.info({ query, snippets: searchSnippets.length }, 'Returning search snippets as fallback');
+      return `Поиск был прерван, но найдены следующие результаты:\n\n${searchSnippets.join('\n\n')}`;
+    }
+    return 'Не удалось найти информацию (превышено время ожидания).';
   } finally {
     clearTimeout(timeoutHandle);
   }

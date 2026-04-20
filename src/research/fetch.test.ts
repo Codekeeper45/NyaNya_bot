@@ -49,4 +49,36 @@ describe('webFetch', () => {
 
     expect(result).toEqual({ title: '', content: '', excerpt: '' });
   });
+
+  it('sends Chrome User-Agent header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(SAMPLE_HTML),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await webFetch('https://example.com/article');
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers['User-Agent']).toContain('Chrome');
+  });
+
+  it('trims content at paragraph boundary, not mid-sentence', async () => {
+    const para1 = 'First paragraph. '.repeat(100); // ~1700 chars
+    const para2 = 'Second paragraph. '.repeat(100); // ~1800 chars
+    const para3 = 'Third paragraph. '.repeat(100);  // ~1800 chars
+    const longHtml = `<!DOCTYPE html><html><head><title>T</title></head>
+    <body><article><p>${para1}</p><p>${para2}</p><p>${para3}</p></article></body></html>`;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(longHtml),
+    }));
+
+    const result = await webFetch('https://example.com/long');
+
+    expect(result.content.length).toBeLessThanOrEqual(4000);
+    // Should end on a sentence boundary (period), not mid-word
+    expect(result.content).toMatch(/[.\n]$/);
+  });
 });
