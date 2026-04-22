@@ -74,6 +74,16 @@ export const messagesRepo = {
     return result[0]?.createdAt ?? null;
   },
 
+  async getLastBotMessageTime(userId: number): Promise<Date | null> {
+    const result = await db()
+      .select({ createdAt: messages.createdAt })
+      .from(messages)
+      .where(and(eq(messages.userId, userId), eq(messages.role, 'assistant')))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    return result[0]?.createdAt ?? null;
+  },
+
   async deleteAllForUser(userId: number): Promise<void> {
     await db().delete(messages).where(eq(messages.userId, userId));
   },

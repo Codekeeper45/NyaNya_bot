@@ -168,6 +168,15 @@ export function startWorker(): Worker<JobPayload> {
         }
       }
 
+      // Anti-spam: skip follow-up if bot already sent a message very recently
+      if (kind === 'followup_check') {
+        const lastBotMsg = await messagesRepo.getLastBotMessageTime(userId);
+        if (lastBotMsg && Date.now() - lastBotMsg.getTime() < 120_000) {
+          log.info({ userId, jobId: job.id }, 'Skipping follow-up: bot sent message < 2 min ago');
+          return;
+        }
+      }
+
       await runOrchestrator({
         userId,
         telegramUserId,

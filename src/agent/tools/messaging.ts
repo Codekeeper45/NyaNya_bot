@@ -8,6 +8,45 @@ import { createChildLogger } from '../../lib/logger.js';
 
 const log = createChildLogger('tool:messaging');
 
+const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const DUPLICATE_PREFIX_LEN = 40;
+
+function normalizeForCompare(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\s\p{P}]/gu, '')
+    .slice(0, 200);
+}
+
+function looksLikeDuplicate(newText: string, oldText: string): boolean {
+  const n1 = normalizeForCompare(newText);
+  const n2 = normalizeForCompare(oldText);
+  if (n1.length < 10 || n2.length < 10) return false;
+  // If one is substring of the other → likely duplicate
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  // If first N chars match
+  return n1.slice(0, DUPLICATE_PREFIX_LEN) === n2.slice(0, DUPLICATE_PREFIX_LEN);
+}
+
+async function isRecentDuplicate(userId: number, text: string): Promise<boolean> {
+  try {
+    const recent = await messagesRepo.getRecent(userId, 10);
+    const now = Date.now();
+    for (const msg of recent) {
+      if (msg.role !== 'assistant') continue;
+      const age = now - new Date(msg.createdAt).getTime();
+      if (age > DUPLICATE_WINDOW_MS) continue;
+      if (looksLikeDuplicate(text, msg.content)) {
+        log.warn({ userId, ageSec: Math.round(age / 1000) }, 'Duplicate message detected, skipping send');
+        return true;
+      }
+    }
+  } catch {
+    // If check fails, allow send
+  }
+  return false;
+}
+
 export function markdownToHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -34,6 +73,7 @@ export function messagingTools(chatId: number, userId: number) {
       }),
       execute: async ({ text }) => {
         if (sent) return { sent: false, reason: 'already_sent' };
+        if (await isRecentDuplicate(userId, text)) return { sent: false, reason: 'duplicate' };
 
         log.debug({ chatId, textLen: text.length }, 'Sending text');
         try {
@@ -59,6 +99,7 @@ export function messagingTools(chatId: number, userId: number) {
       }),
       execute: async ({ text }) => {
         if (sent) return { sent: false, reason: 'already_sent' };
+        if (await isRecentDuplicate(userId, text)) return { sent: false, reason: 'duplicate' };
 
         log.debug({ chatId, textLen: text.length }, 'Sending voice');
         try {

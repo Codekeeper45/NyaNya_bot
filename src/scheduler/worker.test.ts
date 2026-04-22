@@ -28,6 +28,7 @@ vi.mock('../db/repos/messages.js', () => ({
   messagesRepo: {
     getLastUserReplyTime: vi.fn(),
     getWeeklyStats: vi.fn(),
+    getLastBotMessageTime: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -221,6 +222,29 @@ describe('worker followup attempt limit', () => {
     startWorker();
 
     await state.capturedProcessor!(makeFollowupJob(4));
+
+    expect(mockRunOrchestrator).not.toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('skips follow-up if bot sent message < 2 min ago', async () => {
+    const mockGetLastBotMessageTime = messagesRepo.getLastBotMessageTime as ReturnType<typeof vi.fn>;
+    mockGetLastBotMessageTime.mockResolvedValue(new Date(Date.now() - 30_000)); // 30 sec ago
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: {},
+      onboardingComplete: true,
+      paused: false,
+    });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(1));
 
     expect(mockRunOrchestrator).not.toHaveBeenCalled();
     expect(mockScheduleFollowup).not.toHaveBeenCalled();
