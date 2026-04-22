@@ -72,6 +72,7 @@ export function scheduleTools(
   chatId: number,
   userTimezone: string,
   setOnboardingDone?: () => void,
+  proactiveKind?: string,
 ) {
   return {
     schedule_reminder: tool({
@@ -404,7 +405,7 @@ Cron формат: "минуты часы день_месяца месяц де�
       inputSchema: z.object({
         delayMinutes: z.number().min(1).max(120).describe('Через сколько минут переспросить'),
         context: z.string().describe('О чём переспросить (контекст для проактивного сообщения)'),
-        attemptNumber: z.number().min(1).max(4).optional().default(1).describe('Номер попытки (1-4), влияет на тон эскалации'),
+        attemptNumber: z.number().min(1).max(3).optional().default(1).describe('Номер попытки (1-3), влияет на тон эскалации'),
       }),
       execute: async ({ delayMinutes, context, attemptNumber }) => {
         const payload: JobPayload = {
@@ -414,6 +415,7 @@ Cron формат: "минуты часы день_месяца месяц де�
           kind: 'followup_check',
           context,
           attemptNumber,
+          metadata: proactiveKind ? { followupForKind: proactiveKind } : {},
         };
         const jobId = await scheduleJob(payload, delayMinutes * 60_000);
         log.info({ userId, delayMinutes, context, attemptNumber, jobId }, 'Follow-up scheduled');

@@ -23,6 +23,7 @@ export const users = pgTable('users', {
     study_subjects?: string[];
     message_length?: 'short' | 'normal' | 'detailed';
     followup_max_attempts?: number;
+    followup_by_kind?: Record<string, number>;
   }>().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

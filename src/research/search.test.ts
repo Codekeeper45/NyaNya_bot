@@ -17,7 +17,7 @@ beforeEach(() => {
   mockIsTavilyAvailable.mockReturnValue(true);
 });
 
-describe('webSearch (Tavily primary)', () => {
+describe('webSearch (Tavily-only)', () => {
   it('returns Tavily results when available', async () => {
     mockTavilySearch.mockResolvedValue([
       { title: 'Tavily Title', url: 'https://tavily.com/1', snippet: 'Tavily snippet', score: 0.9 },
@@ -30,7 +30,7 @@ describe('webSearch (Tavily primary)', () => {
     expect(mockTavilySearch).toHaveBeenCalledWith('тест запрос', { count: 5, topic: 'general' });
   });
 
-  it('returns empty array from Tavily without falling back to Brave', async () => {
+  it('returns empty array from Tavily when no results', async () => {
     mockTavilySearch.mockResolvedValue([]);
 
     const results = await webSearch('ничего нет');
@@ -38,23 +38,10 @@ describe('webSearch (Tavily primary)', () => {
     expect(results).toEqual([]);
   });
 
-  it('falls back to Brave on Tavily error', async () => {
+  it('throws error on Tavily failure (no Brave fallback)', async () => {
     mockTavilySearch.mockRejectedValue(new Error('Tavily API error'));
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        web: {
-          results: [
-            { title: 'Brave Title', url: 'https://brave.com/1', description: 'Brave snippet' },
-          ],
-        },
-      }),
-    }));
 
-    const results = await webSearch('тест запрос');
-
-    expect(results).toHaveLength(1);
-    expect(results[0].title).toBe('Brave Title');
+    await expect(webSearch('тест запрос')).rejects.toThrow('Не удалось выполнить Tavily web_search');
   });
 
   it('passes count to Tavily', async () => {
@@ -64,69 +51,15 @@ describe('webSearch (Tavily primary)', () => {
 
     expect(mockTavilySearch).toHaveBeenCalledWith('query', { count: 10, topic: 'general' });
   });
-});
 
-describe('webSearch (Brave fallback)', () => {
-  beforeEach(() => {
+  it('throws error when TAVILY_API_KEY not configured', async () => {
     mockIsTavilyAvailable.mockReturnValue(false);
-  });
 
-  it('returns parsed search results from Brave API', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        web: {
-          results: [
-            { title: 'Title 1', url: 'https://example.com/1', description: 'Snippet 1' },
-            { title: 'Title 2', url: 'https://example.com/2', description: 'Snippet 2' },
-          ],
-        },
-      }),
-    }));
-
-    const results = await webSearch('тест запрос');
-
-    expect(results).toHaveLength(2);
-    expect(results[0]).toMatchObject({ title: 'Title 1', url: 'https://example.com/1', snippet: 'Snippet 1' });
-  });
-
-  it('maps extra_snippets from Brave API response', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        web: {
-          results: [
-            { title: 'T', url: 'https://example.com', description: 'Snippet', extra_snippets: ['extra 1', 'extra 2'] },
-          ],
-        },
-      }),
-    }));
-
-    const results = await webSearch('query');
-
-    expect(results[0].extraSnippets).toEqual(['extra 1', 'extra 2']);
-  });
-
-  it('returns empty array when Brave API responds with error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      json: vi.fn().mockResolvedValue({}),
-    }));
-
-    const results = await webSearch('query');
-    expect(results).toEqual([]);
-  });
-
-  it('returns empty array when Brave fetch throws', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
-
-    const results = await webSearch('query');
-    expect(results).toEqual([]);
+    await expect(webSearch('query')).rejects.toThrow('Tavily недоступен');
   });
 });
 
-describe('newsSearch', () => {
+describe('newsSearch (Tavily-only)', () => {
   it('uses Tavily with topic=news when available', async () => {
     mockTavilySearch.mockResolvedValue([
       { title: 'News', url: 'https://news.com/1', snippet: 'Breaking news' },
@@ -139,27 +72,15 @@ describe('newsSearch', () => {
     expect(mockTavilySearch).toHaveBeenCalledWith('новости', { count: 5, topic: 'news' });
   });
 
-  it('falls back to Brave news endpoint when Tavily unavailable', async () => {
-    mockIsTavilyAvailable.mockReturnValue(false);
+  it('throws error on Tavily failure', async () => {
+    mockTavilySearch.mockRejectedValue(new Error('API error'));
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ results: [{ title: 'News 1', url: 'https://news.com/1', description: 'Summary 1' }] }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    await newsSearch('новости');
-
-    const [url] = fetchMock.mock.calls[0];
-    expect(url).toContain('/news/search');
+    await expect(newsSearch('query')).rejects.toThrow('Не удалось выполнить Tavily news_search');
   });
 
-  it('returns empty array on Tavily error with Brave unavailable', async () => {
-    mockTavilySearch.mockRejectedValue(new Error('API error'));
+  it('throws error when TAVILY_API_KEY not configured', async () => {
     mockIsTavilyAvailable.mockReturnValue(false);
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Brave error')));
 
-    const results = await newsSearch('query');
-    expect(results).toEqual([]);
+    await expect(newsSearch('query')).rejects.toThrow('Tavily недоступен');
   });
 });

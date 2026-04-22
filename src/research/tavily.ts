@@ -40,7 +40,7 @@ export async function tavilySearch(
   },
 ): Promise<TavilySearchResult[]> {
   const client = getClient();
-  if (!client) return [];
+  if (!client) throw new Error('TAVILY_API_KEY не настроен');
 
   try {
     const resp = await client.search(query, {
@@ -62,7 +62,7 @@ export async function tavilySearch(
     }));
   } catch (err) {
     log.error({ err, query }, 'Tavily search failed');
-    return [];
+    throw err;
   }
 }
 
@@ -76,7 +76,7 @@ export async function tavilyExtract(
   },
 ): Promise<TavilyExtractResult[]> {
   const client = getClient();
-  if (!client) return [];
+  if (!client) throw new Error('TAVILY_API_KEY не настроен');
 
   const limitedUrls = urls.slice(0, 20);
   if (urls.length > 20) {
@@ -107,7 +107,7 @@ export async function tavilyExtract(
     return results;
   } catch (err) {
     log.error({ err, urls: limitedUrls }, 'Tavily extract failed');
-    return [];
+    throw err;
   }
 }
 

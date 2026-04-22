@@ -84,12 +84,13 @@ export async function cancelRepeatingJob(schedulerId: string): Promise<void> {
 }
 
 export async function listRepeatingJobs(userId: number): Promise<Array<{ schedulerId: string; cron: string; name: string }>> {
-  const schedulers = await opekuQueue.getJobSchedulers();
-  return schedulers
-    .filter(s => s.key?.startsWith(`user-${userId}-`))
-    .map(s => ({
-      schedulerId: s.key ?? '',
-      cron: s.pattern ?? '',
-      name: (s.template?.data as JobPayload | undefined)?.context ?? s.name ?? '',
-    }));
+  const rows = await repeatingJobsRepo.findByUser(userId);
+  return rows.map((r) => {
+    const payload = r.payload as Partial<JobPayload> | undefined;
+    return {
+      schedulerId: r.schedulerId,
+      cron: r.cronPattern,
+      name: payload?.context ?? r.kind,
+    };
+  });
 }

@@ -13,7 +13,7 @@ vi.mock('../db/repos/jobs.js', () => ({
   jobsRepo: { create: vi.fn() },
 }));
 vi.mock('../db/repos/repeating_jobs.js', () => ({
-  repeatingJobsRepo: { upsert: vi.fn(), remove: vi.fn() },
+  repeatingJobsRepo: { upsert: vi.fn(), remove: vi.fn(), findByUser: vi.fn() },
 }));
 vi.mock('../db/repos/job_skip_once.js', () => ({
   jobSkipOnceRepo: { clear: vi.fn().mockResolvedValue(undefined) },
@@ -21,6 +21,7 @@ vi.mock('../db/repos/job_skip_once.js', () => ({
 
 import { opekuQueue } from './queue.js';
 import { jobsRepo } from '../db/repos/jobs.js';
+import { repeatingJobsRepo } from '../db/repos/repeating_jobs.js';
 import {
   scheduleJob,
   cancelJob,
@@ -36,6 +37,7 @@ const mockUpsert = opekuQueue.upsertJobScheduler as ReturnType<typeof vi.fn>;
 const mockRemove = opekuQueue.removeJobScheduler as ReturnType<typeof vi.fn>;
 const mockGetSchedulers = opekuQueue.getJobSchedulers as ReturnType<typeof vi.fn>;
 const mockJobsCreate = jobsRepo.create as ReturnType<typeof vi.fn>;
+const mockRepeatingFindByUser = repeatingJobsRepo.findByUser as ReturnType<typeof vi.fn>;
 
 const payload: JobPayload = {
   userId: 1,
@@ -117,22 +119,22 @@ describe('cancelRepeatingJob', () => {
 });
 
 describe('listRepeatingJobs', () => {
-  it('returns only jobs for the given userId by prefix', async () => {
-    mockGetSchedulers.mockResolvedValue([
-      { key: 'user-1-sport', pattern: '0 9 * * 1', template: { data: { context: 'Тренировка' } } },
-      { key: 'user-2-water', pattern: '0 */2 * * *', template: { data: { context: 'Вода' } } },
-      { key: 'user-1-water', pattern: '30 8 * * *', template: { data: { context: 'Стакан воды' } } },
+  it('returns only jobs for the given userId from DB', async () => {
+    mockRepeatingFindByUser.mockResolvedValue([
+      { schedulerId: 'user-1-sport', cronPattern: '0 9 * * 1', payload: { context: 'Тренировка' } },
+      { schedulerId: 'user-1-water', cronPattern: '30 8 * * *', payload: { context: 'Стакан воды' } },
     ]);
 
     const jobs = await listRepeatingJobs(1);
 
+    expect(mockRepeatingFindByUser).toHaveBeenCalledWith(1);
     expect(jobs).toHaveLength(2);
     expect(jobs.map(j => j.schedulerId)).toEqual(['user-1-sport', 'user-1-water']);
   });
 
   it('returns schedulerId, cron, and name for each job', async () => {
-    mockGetSchedulers.mockResolvedValue([
-      { key: 'user-1-morning', pattern: '0 7 * * *', template: { data: { context: 'Доброе утро' } } },
+    mockRepeatingFindByUser.mockResolvedValue([
+      { schedulerId: 'user-1-morning', cronPattern: '0 7 * * *', payload: { context: 'Доброе утро' } },
     ]);
 
     const jobs = await listRepeatingJobs(1);

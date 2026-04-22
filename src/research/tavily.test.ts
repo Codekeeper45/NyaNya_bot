@@ -52,13 +52,11 @@ describe('tavilySearch', () => {
     });
   });
 
-  it('returns empty array on SDK error', async () => {
+  it('throws on SDK error', async () => {
     mockSearchFn.mockRejectedValue(new Error('API error'));
 
     const { tavilySearch } = await import('./tavily.js');
-    const results = await tavilySearch('test query');
-
-    expect(results).toEqual([]);
+    await expect(tavilySearch('test query')).rejects.toThrow('API error');
   });
 
   it('passes topic and searchDepth options', async () => {
@@ -99,13 +97,11 @@ describe('tavilyExtract', () => {
     });
   });
 
-  it('returns empty array on SDK error', async () => {
+  it('throws on SDK error', async () => {
     mockExtractFn.mockRejectedValue(new Error('API error'));
 
     const { tavilyExtract } = await import('./tavily.js');
-    const results = await tavilyExtract(['https://example.com']);
-
-    expect(results).toEqual([]);
+    await expect(tavilyExtract(['https://example.com'])).rejects.toThrow('API error');
   });
 
   it('logs warnings for failed results', async () => {

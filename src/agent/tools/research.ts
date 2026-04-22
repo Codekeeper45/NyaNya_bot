@@ -11,49 +11,54 @@ const log = createChildLogger('tool:research');
 export function researchTools(chatId?: number) {
   return {
     web_search: tool({
-      description: 'Выполнить прямой поиск в интернете для получения актуальной информации. Использует Tavily Search (надёжный) с Brave fallback.',
+      description: 'Выполнить прямой поиск в интернете для получения актуальной информации. Использует только Tavily Search (серверный поиск с поддержкой более 200 источников).',
       inputSchema: z.object({
         query: z.string().describe('Поисковый запрос'),
         count: z.number().optional().default(5).describe('Количество результатов'),
       }),
       execute: async ({ query, count }) => {
-        log.info({ query }, 'Performing web search');
-        const results = await webSearch(query, count);
-        if (results.length === 0) return { message: 'Ничего не найдено.' };
-        return { results };
+        log.info({ query }, 'Performing Tavily web search');
+        try {
+          const results = await webSearch(query, count);
+          if (results.length === 0) return { message: 'Ничего не найдено.' };
+          return { results };
+        } catch (err) {
+          log.error({ err, query }, 'Web search failed');
+          throw new Error(`Ошибка поиска: ${err instanceof Error ? err.message : 'неизвестная ошибка'}`);
+        }
       },
     }),
 
     web_read: tool({
-      description: 'Прочитать содержимое веб-страницы по URL. Использует Tavily Extract (серверный, надёжный) с JSDOM fallback. Подходит для получения полного текста статьи, документации.',
+      description: 'Прочитать содержимое веб-страницы по URL. Использует только Tavily Extract (серверный, обходит Cloudflare и JS-рендеринг). Подходит для получения полного текста статьи, документации.',
       inputSchema: z.object({
         url: z.string().url().describe('URL страницы для чтения'),
       }),
       execute: async ({ url }) => {
-        log.info({ url }, 'Fetching page');
+        log.info({ url }, 'Fetching page via Tavily');
         try {
           const result = await webFetch(url);
           return result;
         } catch (err) {
-          log.warn({ err, url }, 'Failed to fetch page');
-          return { error: 'Не удалось прочитать страницу.' };
+          log.error({ err, url }, 'Failed to fetch page');
+          throw new Error(`Не удалось прочитать ${url}: ${err instanceof Error ? err.message : 'неизвестная ошибка'}`);
         }
       },
     }),
 
     web_read_many: tool({
-      description: 'Прочитать 2-20 веб-страниц параллельно. Использует Tavily batch extract (один API вызов). Предпочтительнее нескольких web_read вызовов.',
+      description: 'Прочитать 2-20 веб-страниц параллельно за один API вызов. Использует Tavily batch extract (более эффективно чем несколько web_read). Обычно быстрее и надёжнее.',
       inputSchema: z.object({
         urls: z.array(z.string().url()).min(1).max(20).describe('URLs для параллельного чтения'),
       }),
       execute: async ({ urls }) => {
-        log.info({ count: urls.length }, 'Fetching multiple pages');
+        log.info({ count: urls.length }, 'Fetching multiple pages via Tavily batch');
         try {
           const results = await webFetchMany(urls);
           return results;
         } catch (err) {
-          log.warn({ err, count: urls.length }, 'Failed to fetch pages');
-          return { error: 'Не удалось прочитать страницы.' };
+          log.error({ err, count: urls.length }, 'Failed to fetch pages');
+          throw new Error(`Не удалось прочитать страницы: ${err instanceof Error ? err.message : 'неизвестная ошибка'}`);
         }
       },
     }),

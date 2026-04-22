@@ -47,7 +47,12 @@ export async function runResearchAgent(query: string): Promise<string> {
         if (text?.trim()) collectedText += text + '\n';
         for (const tr of (toolResults ?? []) as Array<{ toolName: string; output: unknown }>) {
           if (tr.toolName === 'web_search' || tr.toolName === 'news_search') {
-            const results = (tr.output as { results?: Array<{ title: string; snippet?: string; url: string; extraSnippets?: string[] }> }).results ?? [];
+            const output = tr.output as { results?: Array<{ title: string; snippet?: string; url: string; extraSnippets?: string[] }>; error?: string };
+            if (output.error) {
+              log.warn({ tool: tr.toolName, error: output.error }, 'Search tool returned error');
+              continue;
+            }
+            const results = output.results ?? [];
             for (const r of results) {
               if (!r.snippet || seenUrls.has(r.url) || searchSnippets.length >= MAX_FALLBACK_SOURCES) continue;
               seenUrls.add(r.url);
@@ -60,72 +65,97 @@ export async function runResearchAgent(query: string): Promise<string> {
       },
       tools: {
         web_search: tool({
-          description: 'Search the web for information. Call multiple times in one step for parallel search.',
+          description: 'Search the web for information using Tavily. Call multiple times in one step for parallel search.',
           inputSchema: z.object({
             query: z.string().describe('Search query'),
             count: z.number().optional().default(3),
           }),
           execute: async ({ query, count }) => {
-            const results = await webSearch(query, count);
-            return { results };
+            try {
+              const results = await webSearch(query, count);
+              return { results };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Search failed';
+              return { error: msg };
+            }
           },
         }),
         news_search: tool({
-          description: 'Search recent news articles. Use for current events, game/app releases, announcements, updates.',
+          description: 'Search recent news articles using Tavily. Use for current events, game/app releases, announcements, updates.',
           inputSchema: z.object({
             query: z.string().describe('News search query'),
             count: z.number().optional().default(5),
           }),
           execute: async ({ query, count }) => {
-            const results = await newsSearch(query, count);
-            return { results };
+            try {
+              const results = await newsSearch(query, count);
+              return { results };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'News search failed';
+              return { error: msg };
+            }
           },
         }),
         web_read: tool({
-          description: 'Read content from a single URL. Uses Tavily Extract for reliable server-side extraction when available, falls back to local parsing.',
+          description: 'Read content from a single URL using Tavily Extract (server-side).',
           inputSchema: z.object({
             url: z.string().describe('URL to fetch'),
           }),
           execute: async ({ url }) => {
-            return await webFetch(url);
+            try {
+              return await webFetch(url);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Failed to fetch';
+              return { error: msg };
+            }
           },
         }),
         web_read_many: tool({
-          description: 'Read 2-20 URLs in parallel. Uses Tavily Extract for batch server-side extraction (single API call for all URLs). Prefer over multiple web_read calls.',
+          description: 'Read 2-20 URLs in parallel using Tavily batch Extract (single API call). More efficient than multiple web_read calls.',
           inputSchema: z.object({
             urls: z.array(z.string()).min(1).max(20).describe('URLs to fetch in parallel'),
           }),
           execute: async ({ urls }) => {
-            const results = await webFetchMany(urls);
-            return results;
+            try {
+              const results = await webFetchMany(urls);
+              return results;
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Failed to fetch pages';
+              return { error: msg };
+            }
           },
         }),
         tavily_extract: tool({
-          description: 'Extract clean content from 1-20 URLs using Tavily server-side extraction. Handles JS-rendered pages, Cloudflare protection, and complex sites. More reliable than web_read for structured content. Use query parameter for focused extraction of specific information.',
+          description: 'Extract clean content from 1-20 URLs using Tavily server-side extraction. Handles JS-rendered pages, Cloudflare, complex sites. More reliable than web_read for structured content. Use query for focused extraction.',
           inputSchema: z.object({
             urls: z.array(z.string().url()).min(1).max(20).describe('URLs to extract content from'),
-            query: z.string().optional().describe('Optional: target query to rank and filter extracted content chunks for relevance'),
-            extractDepth: z.enum(['basic', 'advanced']).optional().default('advanced').describe('Extraction depth. Use "advanced" for complex pages, tables, JS-rendered content.'),
+            query: z.string().optional().describe('Optional: target query to rank and filter extracted content'),
+            extractDepth: z.enum(['basic', 'advanced']).optional().default('advanced').describe('Extraction depth (advanced recommended).'),
           }),
           execute: async ({ urls, query, extractDepth }) => {
-            if (!isTavilyAvailable()) {
-              return { error: 'TAVILY_API_KEY не настроен. Используйте web_read вместо этого.' };
+            try {
+              if (!isTavilyAvailable()) {
+                return { error: 'TAVILY_API_KEY не настроен.' };
+              }
+              const results = await tavilyExtract(urls, {
+                extractDepth: extractDepth ?? 'advanced',
+                format: 'markdown',
+                query,
+              });
+              if (results.length === 0) {
+                return { error: 'Не удалось извлечь содержимое ни из одного URL.' };
+              }
+              return {
+                results: results.map(r => ({
+                  url: r.url,
+                  title: r.title,
+                  content: r.content,
+                })),
+              };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Extraction failed';
+              return { error: msg };
             }
-            const results = await tavilyExtract(urls, {
-              extractDepth: extractDepth ?? 'advanced',
-              format: 'markdown',
-              query,
-            });
-            if (results.length === 0) {
-              return { error: 'Не удалось извлечь содержимое ни из одного URL.' };
-            }
-            return {
-              results: results.map(r => ({
-                url: r.url,
-                title: r.title,
-                content: r.content,
-              })),
-            };
           },
         }),
       },

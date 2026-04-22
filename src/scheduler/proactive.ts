@@ -173,10 +173,10 @@ export async function scheduleFollowup(
   payload: Omit<JobPayload, 'kind'>,
   attemptNumber: number,
 ): Promise<void> {
-  if (attemptNumber > 4) return; // Give up
+  if (attemptNumber > 3) return; // Give up
 
-  // Escalating delays: 2min, 3min, 5min, 5min
-  const delaysMinutes = [2, 3, 5, 5];
+  // Escalating delays: 2min, 3min, 5min
+  const delaysMinutes = [2, 3, 5];
   const delayMs = (delaysMinutes[attemptNumber - 1] ?? 180) * 60 * 1000;
 
   await scheduleJob(

@@ -10,9 +10,28 @@ import type { JobPayload } from './jobs.js';
 import { scheduleFollowup } from './proactive.js';
 import { callUser, isTwilioConfigured } from '../call/initiate.js';
 import { jobSkipOnceRepo } from '../db/repos/job_skip_once.js';
+import { repeatingJobsRepo } from '../db/repos/repeating_jobs.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('worker');
+
+function clampFollowupLimit(value: unknown, fallback = 3): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(3, Math.floor(value)));
+}
+
+function resolveFollowupLimit(
+  preferences: Record<string, unknown>,
+  proactiveKind?: string,
+): number {
+  const globalMax = clampFollowupLimit(preferences.followup_max_attempts, 3);
+  const byKind = (preferences.followup_by_kind && typeof preferences.followup_by_kind === 'object')
+    ? preferences.followup_by_kind as Record<string, unknown>
+    : undefined;
+  const kindValue = proactiveKind ? byKind?.[proactiveKind] : undefined;
+  const perKindMax = clampFollowupLimit(kindValue, globalMax);
+  return Math.min(3, globalMax, perKindMax);
+}
 
 export function startWorker(): Worker<JobPayload> {
   const worker = new Worker<JobPayload>(
@@ -38,6 +57,14 @@ export function startWorker(): Worker<JobPayload> {
         return;
       }
 
+      if (skipId) {
+        const exists = await repeatingJobsRepo.findBySchedulerId(skipId);
+        if (!exists) {
+          log.warn({ userId, kind, schedulerId: skipId }, 'Skipping scheduler job missing in DB source-of-truth');
+          return;
+        }
+      }
+
       // Skip followup_check if user already replied after this job was scheduled
       if (kind === 'followup_check' && job.timestamp) {
         const lastReply = await messagesRepo.getLastUserReplyTime(userId);
@@ -53,8 +80,14 @@ export function startWorker(): Worker<JobPayload> {
         return;
       }
 
-      if (kind === 'followup_check' && (attemptNumber ?? 1) >= 4) {
-        log.info({ userId, jobId: job.id, attemptNumber }, 'Followup attempt limit reached');
+      const preferences = (user.preferences as Record<string, unknown>) ?? {};
+      const followupForKind = typeof job.data.metadata?.followupForKind === 'string'
+        ? job.data.metadata.followupForKind
+        : undefined;
+      const followupLimit = resolveFollowupLimit(preferences, followupForKind);
+
+      if (kind === 'followup_check' && (attemptNumber ?? 1) > followupLimit) {
+        log.info({ userId, jobId: job.id, attemptNumber, followupLimit }, 'Followup attempt limit reached');
         // Try calling if phone number is set
         if (isTwilioConfigured() && user.phoneNumber) {
           log.info({ userId }, 'Escalating to phone call');
@@ -145,7 +178,7 @@ export function startWorker(): Worker<JobPayload> {
         sleepTime: user.sleepTime ?? undefined,
         weekendWakeTime: user.weekendWakeTime ?? undefined,
         weekendSleepTime: user.weekendSleepTime ?? undefined,
-        preferences: (user.preferences as Record<string, unknown>) ?? {},
+        preferences,
         onboardingComplete: user.onboardingComplete,
         mode: 'proactive',
         proactiveKind: kind,
@@ -156,9 +189,18 @@ export function startWorker(): Worker<JobPayload> {
       // Auto-escalate followup_check: schedule next attempt if not at limit
       if (kind === 'followup_check') {
         const currentAttempt = attemptNumber ?? 1;
-        if (currentAttempt < 4) {
+        if (currentAttempt < followupLimit) {
           await scheduleFollowup(
-            { userId, telegramUserId, telegramChatId, context: context ?? '' },
+            {
+              userId,
+              telegramUserId,
+              telegramChatId,
+              context: context ?? '',
+              metadata: {
+                ...(job.data.metadata ?? {}),
+                ...(followupForKind ? { followupForKind } : {}),
+              },
+            },
             currentAttempt + 1,
           );
         }

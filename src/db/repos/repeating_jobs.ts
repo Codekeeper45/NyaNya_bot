@@ -41,4 +41,9 @@ export const repeatingJobsRepo = {
   async findByUser(userId: number): Promise<RepeatingJob[]> {
     return db().select().from(repeatingJobs).where(eq(repeatingJobs.userId, userId));
   },
+
+  async findBySchedulerId(schedulerId: string): Promise<RepeatingJob | undefined> {
+    const rows = await db().select().from(repeatingJobs).where(eq(repeatingJobs.schedulerId, schedulerId)).limit(1);
+    return rows[0];
+  },
 };

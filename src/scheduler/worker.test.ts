@@ -31,6 +31,10 @@ vi.mock('../db/repos/messages.js', () => ({
   },
 }));
 
+vi.mock('../db/repos/repeating_jobs.js', () => ({
+  repeatingJobsRepo: { findBySchedulerId: vi.fn().mockResolvedValue({}) },
+}));
+
 vi.mock('../db/repos/lesson_plans.js', () => ({
   lessonPlansRepo: {
     getWeeklyStats: vi.fn(),
@@ -57,8 +61,24 @@ beforeEach(() => {
   state.capturedProcessor = null;
 });
 
+function makeFollowupJob(attemptNumber: number, metadata?: Record<string, unknown>) {
+  return {
+    id: 'job-1',
+    timestamp: Date.now(),
+    data: {
+      userId: 1,
+      telegramUserId: 100,
+      telegramChatId: 200,
+      kind: 'followup_check',
+      context: 'check in',
+      attemptNumber,
+      metadata,
+    },
+  };
+}
+
 describe('worker followup attempt limit', () => {
-  it('skips orchestrator for followup attempt 4', async () => {
+  it('skips orchestrator for followup attempt 4 (default global limit 3)', async () => {
     mockFindById.mockResolvedValue({
       id: 1,
       name: 'User',
@@ -74,18 +94,133 @@ describe('worker followup attempt limit', () => {
     startWorker();
 
     expect(state.capturedProcessor).toBeTruthy();
-    await state.capturedProcessor!({
-      id: 'job-1',
-      timestamp: Date.now(),
-      data: {
-        userId: 1,
-        telegramUserId: 100,
-        telegramChatId: 200,
-        kind: 'followup_check',
-        context: 'check in',
-        attemptNumber: 4,
-      },
+    await state.capturedProcessor!(makeFollowupJob(4));
+
+    expect(mockRunOrchestrator).not.toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('allows attempt 3 but does not schedule next followup when at limit', async () => {
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: {},
+      onboardingComplete: true,
+      paused: false,
     });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(3));
+
+    expect(mockRunOrchestrator).toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('schedules next followup for attempt 1 when under limit', async () => {
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: {},
+      onboardingComplete: true,
+      paused: false,
+    });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(1));
+
+    expect(mockRunOrchestrator).toHaveBeenCalled();
+    expect(mockScheduleFollowup).toHaveBeenCalled();
+  });
+
+  it('respects global followup limit from preferences', async () => {
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: { followup_max_attempts: 1 },
+      onboardingComplete: true,
+      paused: false,
+    });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(2));
+
+    expect(mockRunOrchestrator).not.toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('respects per-kind followup limit lower than global', async () => {
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: { followup_max_attempts: 3, followup_by_kind: { morning_greeting: 1 } },
+      onboardingComplete: true,
+      paused: false,
+    });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(2, { followupForKind: 'morning_greeting' }));
+
+    expect(mockRunOrchestrator).not.toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('uses global limit when per-kind limit is higher', async () => {
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: { followup_max_attempts: 2, followup_by_kind: { morning_greeting: 5 } },
+      onboardingComplete: true,
+      paused: false,
+    });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(3, { followupForKind: 'morning_greeting' }));
+
+    expect(mockRunOrchestrator).not.toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('never exceeds hard ceiling of 3 even if preferences say 5', async () => {
+    mockFindById.mockResolvedValue({
+      id: 1,
+      name: 'User',
+      timezone: 'Asia/Almaty',
+      wakeTime: '08:00',
+      sleepTime: '23:00',
+      preferences: { followup_max_attempts: 5 },
+      onboardingComplete: true,
+      paused: false,
+    });
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    startWorker();
+
+    await state.capturedProcessor!(makeFollowupJob(4));
 
     expect(mockRunOrchestrator).not.toHaveBeenCalled();
     expect(mockScheduleFollowup).not.toHaveBeenCalled();

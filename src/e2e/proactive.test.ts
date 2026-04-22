@@ -152,9 +152,9 @@ describe('T-31: Followup skip when user already replied', () => {
   });
 });
 
-describe('T-32: Followup escalation stops at attempt 4', () => {
-  it('schedules next followup for attempts 1-3', async () => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
+describe('T-32: Followup escalation stops at attempt 3', () => {
+  it('schedules next followup for attempts 1-2', async () => {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       vi.clearAllMocks();
       mockFindById.mockResolvedValue(baseUser);
       mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -169,7 +169,22 @@ describe('T-32: Followup escalation stops at attempt 4', () => {
     }
   });
 
-  it('does not run orchestrator on attempt 4 (at limit)', async () => {
+  it('does not schedule next followup on attempt 3 (at limit)', async () => {
+    vi.clearAllMocks();
+    mockFindById.mockResolvedValue(baseUser);
+    mockGetLastUserReplyTime.mockResolvedValue(null);
+
+    await state.capturedProcessor!({
+      id: 'job-fu-3',
+      data: makeJobPayload({ kind: 'followup_check', attemptNumber: 3 }),
+      timestamp: Date.now() - 10_000,
+    });
+
+    expect(mockRunOrchestrator).toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
+  });
+
+  it('does not run orchestrator on attempt 4 (above limit)', async () => {
     await state.capturedProcessor!({
       id: 'job-fu-4',
       data: makeJobPayload({ kind: 'followup_check', attemptNumber: 4 }),

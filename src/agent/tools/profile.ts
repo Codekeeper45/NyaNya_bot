@@ -66,7 +66,8 @@ export function profileTools(userId: number) {
       inputSchema: z.object({
         voice_default: z.boolean().optional().describe('Отвечать голосом по умолчанию'),
         message_length: z.enum(['short', 'normal', 'detailed']).optional().describe('Длина ответов: short=кратко, normal=обычно, detailed=подробно'),
-        followup_max_attempts: z.number().min(1).max(4).optional().describe('Макс. число follow-up попыток (1–4)'),
+        followup_max_attempts: z.number().min(0).max(3).optional().describe('Глобальный лимит follow-up попыток (0–3)'),
+        followup_by_kind: z.record(z.string(), z.number().min(0).max(3)).optional().describe('Лимиты follow-up по типу действия, например {"morning_greeting":1,"daily_planning":2}'),
         interests: z.array(z.string()).optional().describe('Интересы и хобби'),
         dietary: z.array(z.string()).optional().describe('Диетические ограничения'),
         study_subjects: z.array(z.string()).optional().describe('Темы для обучения'),
