@@ -14,6 +14,8 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('orchestrator');
 
 const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
+const ORCHESTRATOR_TIMEOUT_MS = 120_000;
+const ORCHESTRATOR_TIMEOUT_TEXT = 'Извини, запрос получился слишком объёмным. Я сократила исследование и готова ответить точнее, если сузим тему.';
 
 /**
  * Some models (e.g. gemma) output tool calls as raw text using special tokens
@@ -147,15 +149,44 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   log.info({ userId: input.userId, mode: input.mode }, 'Starting orchestrator');
 
   const { tools, wasSent, getOnboardingCompleted } = allTools(input);
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    log.warn({ userId: input.userId }, 'Orchestrator timeout reached, aborting');
+    abortController.abort();
+  }, ORCHESTRATOR_TIMEOUT_MS);
 
-  const result = await generateText({
-    model: openrouter(config.primaryModel),
-    system: systemPrompt,
-    messages,
-    tools,
-    stopWhen: stepCountIs(15),
-    temperature: 0.7,
-  });
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    result = await generateText({
+      model: openrouter(config.primaryModel),
+      system: systemPrompt,
+      messages,
+      tools,
+      stopWhen: stepCountIs(15),
+      temperature: 0.7,
+      abortSignal: abortController.signal,
+    });
+  } catch (err: unknown) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    if (!isAbort) throw err;
+    log.warn({ userId: input.userId }, 'Orchestrator ended early by timeout');
+    if (!wasSent()) {
+      try {
+        await bot.api.sendMessage(input.telegramChatId, markdownToHtml(ORCHESTRATOR_TIMEOUT_TEXT), { parse_mode: 'HTML' });
+      } catch {
+        await bot.api.sendMessage(input.telegramChatId, ORCHESTRATOR_TIMEOUT_TEXT);
+      }
+      await messagesRepo.create({
+        userId: input.userId,
+        role: 'assistant',
+        content: ORCHESTRATOR_TIMEOUT_TEXT,
+        source: 'text',
+      });
+    }
+    return;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 
   // Log tool calls per step
   for (const [i, step] of result.steps.entries()) {

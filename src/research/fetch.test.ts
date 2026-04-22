@@ -1,10 +1,12 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
-import { webFetch } from './fetch.js';
+import { webFetch, webFetchMany } from './fetch.js';
+import type { FetchManyResult } from './fetch.js';
 
-beforeEach(() => {
-  vi.unstubAllGlobals();
-});
+vi.mock('./tavily.js', () => ({
+  tavilyExtract: vi.fn(),
+  isTavilyAvailable: vi.fn(() => false),
+}));
 
 const SAMPLE_HTML = `<!DOCTYPE html>
 <html><head><title>Test Article</title></head>
@@ -15,8 +17,12 @@ const SAMPLE_HTML = `<!DOCTYPE html>
   </article>
 </body></html>`;
 
-describe('webFetch', () => {
-  it('extracts title and text via Readability', async () => {
+beforeEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('webFetch (JSDOM fallback)', () => {
+  it('extracts title and text via Readability when Tavily unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       text: vi.fn().mockResolvedValue(SAMPLE_HTML),
@@ -64,9 +70,9 @@ describe('webFetch', () => {
   });
 
   it('trims content at paragraph boundary, not mid-sentence', async () => {
-    const para1 = 'First paragraph. '.repeat(100); // ~1700 chars
-    const para2 = 'Second paragraph. '.repeat(100); // ~1800 chars
-    const para3 = 'Third paragraph. '.repeat(100);  // ~1800 chars
+    const para1 = 'First paragraph. '.repeat(100);
+    const para2 = 'Second paragraph. '.repeat(100);
+    const para3 = 'Third paragraph. '.repeat(100);
     const longHtml = `<!DOCTYPE html><html><head><title>T</title></head>
     <body><article><p>${para1}</p><p>${para2}</p><p>${para3}</p></article></body></html>`;
 
@@ -78,7 +84,43 @@ describe('webFetch', () => {
     const result = await webFetch('https://example.com/long');
 
     expect(result.content.length).toBeLessThanOrEqual(4000);
-    // Should end on a sentence boundary (period), not mid-word
     expect(result.content).toMatch(/[.\n]$/);
+  });
+});
+
+describe('webFetchMany (JSDOM fallback)', () => {
+  it('returns FetchManyResult[] with url and fetchedOk fields', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(SAMPLE_HTML),
+    }));
+
+    const results = await webFetchMany(['https://example.com/1', 'https://example.com/2']);
+
+    expect(results).toHaveLength(2);
+    expect(results[0].url).toBe('https://example.com/1');
+    expect(results[0].fetchedOk).toBe(true);
+    expect(results[0].title).toBeTruthy();
+  });
+
+  it('sets fetchedOk=false for failed URLs without killing the batch', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue(SAMPLE_HTML),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const results = await webFetchMany(['https://fail.com', 'https://ok.com']);
+
+    expect(results).toHaveLength(2);
+    expect(results[0].fetchedOk).toBe(false);
+    expect(results[1].fetchedOk).toBe(true);
+  });
+
+  it('returns empty results for empty input', async () => {
+    const results = await webFetchMany([]);
+    expect(results).toEqual([]);
   });
 });

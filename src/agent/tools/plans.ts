@@ -10,7 +10,14 @@ const log = createChildLogger('tool:plans');
 const PLAN_PREFIX = (userId: number) => `user-${userId}-plan-`;
 
 function slugify(name: string): string {
-  return name.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, '-').slice(0, 40);
+  const cyrillicMap: Record<string, string> = {
+    а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'y',
+    к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',
+    х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya',
+  };
+  return name.toLowerCase()
+    .split('').map(c => cyrillicMap[c] ?? c).join('')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 }
 
 function buildCron(days: number[], time: string): string {
@@ -107,9 +114,9 @@ export function planTools(userId: number, telegramUserId: number, telegramChatId
     }),
 
     plan_update: tool({
-      description: 'Изменить существующий план — название, текст, дни или время.',
+      description: 'Изменить существующий план — название, текст, дни или время. ОБЯЗАТЕЛЬНО вызови plan_list перед этим инструментом — ID бери только оттуда, НИКОГДА не угадывай.',
       inputSchema: z.object({
-        id: z.string().describe('ID плана (из plan_list)'),
+        id: z.string().describe('ID плана — только из plan_list, не придумывай'),
         name: z.string().optional().describe('Новое название'),
         message: z.string().optional().describe('Новый текст напоминания'),
         days: z.array(z.number().min(0).max(6)).optional().describe('Новые дни недели'),
@@ -150,9 +157,9 @@ export function planTools(userId: number, telegramUserId: number, telegramChatId
     }),
 
     plan_delete: tool({
-      description: 'Удалить план по ID.',
+      description: 'Удалить план по ID. ОБЯЗАТЕЛЬНО вызови plan_list перед этим инструментом — ID бери только оттуда.',
       inputSchema: z.object({
-        id: z.string().describe('ID плана (из plan_list)'),
+        id: z.string().describe('ID плана — только из plan_list, не придумывай'),
       }),
       execute: async ({ id }) => {
         if (!id.startsWith(prefix)) return { error: 'Unauthorized' };

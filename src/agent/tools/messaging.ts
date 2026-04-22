@@ -53,9 +53,9 @@ export function messagingTools(chatId: number, userId: number) {
     }),
 
     message_send_voice: tool({
-      description: 'Отправить голосовое сообщение. Для тёплых, эмоциональных, коротких сообщений.',
+      description: 'Отправить голосовое сообщение. Для эмоциональных, коротких сообщений. Интонацией управляют аудио-теги: [whispers], [shouting], [excited], [serious], [sighs], [laughs], [curious], [panicked], [crying], [tired], [amazed], [sarcastic], [gasp], [giggles], [mischievously], [trembling], [short pause], [long pause] — и любые свои.',
       inputSchema: z.object({
-        text: z.string().describe('Текст для озвучки (будет синтезирован в голосовое)'),
+        text: z.string().describe('Текст для озвучки. Теги управляют интонацией: [excited], [whispers], [serious], [sighs], [shouting] и т.д. Пример: "[sighs] Ладно, [excited] пошли!"'),
       }),
       execute: async ({ text }) => {
         if (sent) return { sent: false, reason: 'already_sent' };

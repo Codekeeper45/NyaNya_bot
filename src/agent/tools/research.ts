@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { InputFile } from 'grammy';
 import { webSearch } from '../../research/search.js';
-import { webFetch } from '../../research/fetch.js';
+import { webFetch, webFetchMany } from '../../research/fetch.js';
 import { bot } from '../../bot/bot.js';
 import { createChildLogger } from '../../lib/logger.js';
 
@@ -11,7 +11,7 @@ const log = createChildLogger('tool:research');
 export function researchTools(chatId?: number) {
   return {
     web_search: tool({
-      description: 'Выполнить прямой поиск в интернете для получения актуальной информации.',
+      description: 'Выполнить прямой поиск в интернете для получения актуальной информации. Использует Tavily Search (надёжный) с Brave fallback.',
       inputSchema: z.object({
         query: z.string().describe('Поисковый запрос'),
         count: z.number().optional().default(5).describe('Количество результатов'),
@@ -25,7 +25,7 @@ export function researchTools(chatId?: number) {
     }),
 
     web_read: tool({
-      description: 'Прочитать содержимое веб-страницы по URL. Используй чтобы получить полный текст статьи, документации или материала.',
+      description: 'Прочитать содержимое веб-страницы по URL. Использует Tavily Extract (серверный, надёжный) с JSDOM fallback. Подходит для получения полного текста статьи, документации.',
       inputSchema: z.object({
         url: z.string().url().describe('URL страницы для чтения'),
       }),
@@ -37,6 +37,23 @@ export function researchTools(chatId?: number) {
         } catch (err) {
           log.warn({ err, url }, 'Failed to fetch page');
           return { error: 'Не удалось прочитать страницу.' };
+        }
+      },
+    }),
+
+    web_read_many: tool({
+      description: 'Прочитать 2-20 веб-страниц параллельно. Использует Tavily batch extract (один API вызов). Предпочтительнее нескольких web_read вызовов.',
+      inputSchema: z.object({
+        urls: z.array(z.string().url()).min(1).max(20).describe('URLs для параллельного чтения'),
+      }),
+      execute: async ({ urls }) => {
+        log.info({ count: urls.length }, 'Fetching multiple pages');
+        try {
+          const results = await webFetchMany(urls);
+          return results;
+        } catch (err) {
+          log.warn({ err, count: urls.length }, 'Failed to fetch pages');
+          return { error: 'Не удалось прочитать страницы.' };
         }
       },
     }),
