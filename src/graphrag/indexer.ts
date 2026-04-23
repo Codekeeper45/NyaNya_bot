@@ -84,12 +84,13 @@ export async function indexUserMessages(userId: number): Promise<void> {
       let entityId: string;
       if (duplicate) {
         entityId = similar[0].id;
-        // Merge description
+        // Merge description and bump importance
         const existing = await graphEntitiesRepo.findById(entityId);
         if (existing) {
           const merged = `${existing.description}; ${desc}`;
           const mergedEmb = await embedTexts([merged]);
           await graphEntitiesRepo.updateDescription(entityId, merged, mergedEmb[0]);
+          await graphEntitiesRepo.updateUsage(entityId, 1);
           log.debug({ entityId, name }, 'Merged duplicate entity');
         }
       } else {
@@ -98,6 +99,7 @@ export async function indexUserMessages(userId: number): Promise<void> {
           name,
           description: desc,
           embedding: emb,
+          importanceScore: 10,
         });
       }
 

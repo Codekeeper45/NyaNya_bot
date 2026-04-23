@@ -3,7 +3,6 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { config } from '../config.js';
 import { buildSystemPrompt } from './prompts/system.js';
 import { buildProactivePrompt } from './prompts/proactive.js';
-import { graphRag } from '../graphrag/index.js';
 import { messagesRepo } from '../db/repos/messages.js';
 import { listRepeatingJobs } from '../scheduler/jobs.js';
 import { allTools } from './tools/index.js';
@@ -56,26 +55,7 @@ function shouldRetrieveContext(query: string): boolean {
   return true;
 }
 
-/**
- * Detect broad "about me" queries where semantic search often fails.
- * These should fallback to retrieveAll() (dump all facts).
- */
-function isBroadAboutMeQuery(query: string): boolean {
-  const q = query.toLowerCase();
-  const patterns = [
-    /расскажи .*обо мне/,
-    /кто я/,
-    /что ты знаешь обо мне/,
-    /что ты помнишь обо мне/,
-    /что ты знаешь про меня/,
-    /вс[её] о (пользователе|мне|себе)/,
-    /моя (жизнь|история|биография)/,
-    /tell me about myself/,
-    /who am i/,
-    /what do you know about me/,
-  ];
-  return patterns.some(p => p.test(q));
-}
+// isBroadAboutMeQuery removed — subgraph builder handles all queries
 
 export interface OrchestratorInput {
   userId: number;
@@ -143,26 +123,34 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     | { type: 'text'; text: string }
     | { type: 'image'; image: string; mimeType: string };
 
+  let userMessageRecord: Awaited<ReturnType<typeof messagesRepo.create>> | undefined;
+
   if (input.userMessage) {
+    // Save user message to DB first (needed for subgraph builder messageId)
+    userMessageRecord = await messagesRepo.create({
+      userId: input.userId,
+      role: 'user',
+      content: input.userMessage + (input.images && input.images.length > 0 ? ` [Изображений: ${input.images.length}]` : ''),
+      source: input.images && input.images.length > 0 ? 'photo' : 'text',
+    });
+
     let userMessageText = input.userMessage;
 
-    // Auto-augment user query with GraphRAG context
+    // Auto-augment user query with floating subgraph context
     if (shouldRetrieveContext(input.userMessage)) {
       try {
-        let graphContext: string;
-        if (isBroadAboutMeQuery(input.userMessage)) {
-          // Broad queries: dump all facts (semantic search fails on "tell me about me")
-          log.debug({ userId: input.userId, query: input.userMessage }, 'Broad about-me query detected, using retrieveAll');
-          graphContext = await graphRag.retrieveAll(input.userId);
-        } else {
-          // Normal queries: semantic search for specific entities
-          graphContext = await graphRag.retrieve(input.userId, input.userMessage);
-        }
+        const { buildFloatingSubgraph } = await import('../graphrag/subgraph-builder.js');
+        const graphContext = await buildFloatingSubgraph(
+          input.userId,
+          input.userMessage,
+          recentMessages,
+          userMessageRecord.id,
+        );
         if (graphContext && graphContext.trim().length > 0) {
           userMessageText = `[Релевантный контекст из памяти:\n${graphContext}\n]\n\n${input.userMessage}`;
         }
       } catch (err) {
-        log.warn({ userId: input.userId, err }, 'GraphRAG auto-retrieval failed');
+        log.warn({ userId: input.userId, err }, 'Floating subgraph build failed');
       }
     } else {
       log.debug({ userId: input.userId, query: input.userMessage }, 'Skipping GraphRAG retrieval — trivial message');
@@ -181,13 +169,6 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     }
 
     messages.push({ role: 'user' as const, content: userContent });
-    
-    await messagesRepo.create({
-      userId: input.userId,
-      role: 'user',
-      content: input.userMessage + (input.images && input.images.length > 0 ? ` [Изображений: ${input.images.length}]` : ''),
-      source: input.images && input.images.length > 0 ? 'photo' : 'text',
-    });
   }
   if (input.mode === 'proactive' && !input.userMessage) {
     messages.push({

@@ -1,4 +1,4 @@
-import { eq, sql, and } from 'drizzle-orm';
+import { eq, sql, and, inArray, notInArray } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { graphEntities } from '../schema.js';
 import type { NewGraphEntity } from '../schema.js';
@@ -74,5 +74,68 @@ export const graphEntitiesRepo = {
       .from(graphEntities)
       .where(eq(graphEntities.userId, userId))
       .orderBy(graphEntities.createdAt);
+  },
+
+  async updateUsage(id: string, importanceDelta = 1) {
+    await db()
+      .update(graphEntities)
+      .set({
+        lastUsedAt: new Date(),
+        useCount: sql`${graphEntities.useCount} + 1`,
+        importanceScore: sql`LEAST(${graphEntities.importanceScore} + ${importanceDelta}, 100)`,
+      })
+      .where(eq(graphEntities.id, id));
+  },
+
+  async findByIds(ids: string[]) {
+    if (ids.length === 0) return [];
+    return db()
+      .select()
+      .from(graphEntities)
+      .where(inArray(graphEntities.id, ids));
+  },
+
+  async findWithScoring(
+    userId: number,
+    embedding: number[],
+    excludeIds: string[] = [],
+    limit = 20,
+  ): Promise<Array<{
+    id: string;
+    name: string;
+    description: string;
+    distance: number;
+    importanceScore: number;
+    lastUsedAt: Date | null;
+    useCount: number;
+    finalScore: number;
+  }>> {
+    const embeddingJson = JSON.stringify(embedding);
+
+    // Build where clause
+    let whereClause = eq(graphEntities.userId, userId);
+    if (excludeIds.length > 0) {
+      whereClause = and(whereClause, notInArray(graphEntities.id, excludeIds))!;
+    }
+
+    return db()
+      .select({
+        id: graphEntities.id,
+        name: graphEntities.name,
+        description: graphEntities.description,
+        distance: sql<number>`${graphEntities.embedding} <=> ${embeddingJson}::vector(1536)`,
+        importanceScore: graphEntities.importanceScore,
+        lastUsedAt: graphEntities.lastUsedAt,
+        useCount: graphEntities.useCount,
+        finalScore: sql<number>`
+          ((1 - (${graphEntities.embedding} <=> ${embeddingJson}::vector(1536))) * (${graphEntities.importanceScore} / 100.0))
+          - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
+          - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.01, 0.5)
+        `,
+      })
+      .from(graphEntities)
+      .where(whereClause)
+      .orderBy(sql`final_score DESC`)
+      .limit(limit);
   },
 };

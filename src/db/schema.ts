@@ -177,6 +177,9 @@ export const graphEntities = pgTable('graph_entities', {
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description').notNull(),
   embedding: vector1536('embedding').notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+  useCount: integer('use_count').notNull().default(0),
+  importanceScore: integer('importance_score').notNull().default(10),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('idx_graph_entities_user').on(t.userId),
@@ -202,6 +205,17 @@ export const graphEntityMentions = pgTable('graph_entity_mentions', {
   chunkId: uuid('chunk_id').references(() => graphChunks.id, { onDelete: 'cascade' }).notNull(),
 }, (t) => [
   unique('entity_chunk_unique').on(t.entityId, t.chunkId),
+]);
+
+export const graphEntityUsages = pgTable('graph_entity_usages', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  entityId: uuid('entity_id').references(() => graphEntities.id, { onDelete: 'cascade' }).notNull(),
+  messageId: integer('message_id').references(() => messages.id).notNull(),
+  usedAt: timestamp('used_at').defaultNow().notNull(),
+}, (t) => [
+  index('idx_entity_usages_user_entity').on(t.userId, t.entityId),
+  index('idx_entity_usages_message').on(t.messageId),
 ]);
 
 export const graphIndexState = pgTable('graph_index_state', {
@@ -234,4 +248,6 @@ export type GraphRelationship = typeof graphRelationships.$inferSelect;
 export type NewGraphRelationship = typeof graphRelationships.$inferInsert;
 export type GraphEntityMention = typeof graphEntityMentions.$inferSelect;
 export type NewGraphEntityMention = typeof graphEntityMentions.$inferInsert;
+export type GraphEntityUsage = typeof graphEntityUsages.$inferSelect;
+export type NewGraphEntityUsage = typeof graphEntityUsages.$inferInsert;
 export type GraphIndexState = typeof graphIndexState.$inferSelect;
