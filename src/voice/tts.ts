@@ -19,44 +19,48 @@ function getGemini(): GoogleGenAI | null {
   return genai;
 }
 
+export type VoiceGender = 'female' | 'male';
+
 export interface VoiceProfile {
   name: string;
   tone: string;
   pitch: string;
   personality: string;
+  gender: VoiceGender;
+  emoji: string;
 }
 
 export const VOICE_PROFILES: VoiceProfile[] = [
-  { name: 'Achernar', tone: 'Soft', pitch: 'Higher pitch', personality: 'Мягкий, нежный, подходит для утешения и ласки' },
-  { name: 'Achird', tone: 'Friendly', pitch: 'Lower middle pitch', personality: 'Дружелюбный, тёплый, универсальный собеседник' },
-  { name: 'Algenib', tone: 'Gravelly', pitch: 'Lower pitch', personality: 'Хриплый, харизматичный, для серьёзных тем' },
-  { name: 'Algieba', tone: 'Smooth', pitch: 'Lower pitch', personality: 'Плавный, спокойный, идеален для объяснений' },
-  { name: 'Alnilam', tone: 'Firm', pitch: 'Lower middle pitch', personality: 'Твёрдый, уверенный, для мотивации и инструкций' },
-  { name: 'Aoede', tone: 'Breezy', pitch: 'Middle pitch', personality: 'Лёгкий, воздушный, для повседневных бесед' },
-  { name: 'Autonoe', tone: 'Bright', pitch: 'Middle pitch', personality: 'Яркий, энергичный, для радостных новостей' },
-  { name: 'Callirrhoe', tone: 'Easy-going', pitch: 'Middle pitch', personality: 'Непринуждённый, расслабленный, для дружеского тона' },
-  { name: 'Charon', tone: 'Informative', pitch: 'Lower pitch', personality: 'Информативный, взвешенный, для фактов и новостей' },
-  { name: 'Despina', tone: 'Smooth', pitch: 'Middle pitch', personality: 'Гладкий, ровный, универсальный' },
-  { name: 'Enceladus', tone: 'Breathy', pitch: 'Lower pitch', personality: 'Дыхательный, интимный, для тихих моментов' },
-  { name: 'Erinome', tone: 'Clear', pitch: 'Middle pitch', personality: 'Чёткий, ясный, для объяснений и обучения' },
-  { name: 'Fenrir', tone: 'Excitable', pitch: 'Lower middle pitch', personality: 'Возбудимый, эмоциональный, для шуток и сюрпризов' },
-  { name: 'Gacrux', tone: 'Mature', pitch: 'Middle pitch', personality: 'Зрелый, мудрый, для советов и размышлений' },
-  { name: 'Iapetus', tone: 'Clear', pitch: 'Lower middle pitch', personality: 'Чёткий, глубокий, для деловых разговоров' },
-  { name: 'Kore', tone: 'Firm', pitch: 'Middle pitch', personality: 'Твёрдый, сбалансированный, хороший дефолт' },
-  { name: 'Laomedeia', tone: 'Upbeat', pitch: 'Higher pitch', personality: 'Жизнерадостный, бодрый, для утренних приветствий' },
-  { name: 'Leda', tone: 'Youthful', pitch: 'Higher pitch', personality: 'Молодой, игривый, энергичный, текущий дефолт' },
-  { name: 'Orus', tone: 'Firm', pitch: 'Lower middle pitch', personality: 'Твёрдый, уверенный, для мотивации' },
-  { name: 'Puck', tone: 'Upbeat', pitch: 'Middle pitch', personality: 'Весёлый, оживлённый, для шуток' },
-  { name: 'Pulcherrima', tone: 'Forward', pitch: 'Middle pitch', personality: 'Напористый, прямой, для важных напоминаний' },
-  { name: 'Rasalgethi', tone: 'Informative', pitch: 'Middle pitch', personality: 'Информативный, нейтральный, для новостей' },
-  { name: 'Sadachbia', tone: 'Lively', pitch: 'Lower pitch', personality: 'Живой, динамичный, для активных обсуждений' },
-  { name: 'Sadaltager', tone: 'Knowledgeable', pitch: 'Middle pitch', personality: 'Знающий, экспертный, для обучения' },
-  { name: 'Schedar', tone: 'Even', pitch: 'Lower middle pitch', personality: 'Ровный, стабильный, для долгих бесед' },
-  { name: 'Sulafat', tone: 'Warm', pitch: 'Middle pitch', personality: 'Тёплый, уютный, для поддержки и заботы' },
-  { name: 'Umbriel', tone: 'Easy-going', pitch: 'Lower middle pitch', personality: 'Непринуждённый, мягкий, для вечерних разговоров' },
-  { name: 'Vindemiatrix', tone: 'Gentle', pitch: 'Middle pitch', personality: 'Нежный, ласковый, для утешения' },
-  { name: 'Zephyr', tone: 'Current', pitch: 'Bright', personality: 'Современный, яркий, для молодёжного тона' },
-  { name: 'Zubenelgenubi', tone: 'Casual', pitch: 'Lower middle pitch', personality: 'Неформальный, расслабленный, для друзей' },
+  { name: 'Achernar', tone: 'Soft', pitch: 'Higher pitch', personality: 'Мягкий, нежный, подходит для утешения и ласки', gender: 'female', emoji: '🌙' },
+  { name: 'Achird', tone: 'Friendly', pitch: 'Lower middle pitch', personality: 'Дружелюбный, тёплый, универсальный собеседник', gender: 'female', emoji: '🌟' },
+  { name: 'Algenib', tone: 'Gravelly', pitch: 'Lower pitch', personality: 'Хриплый, харизматичный, для серьёзных тем', gender: 'male', emoji: '🔮' },
+  { name: 'Algieba', tone: 'Smooth', pitch: 'Lower pitch', personality: 'Плавный, спокойный, идеален для объяснений', gender: 'male', emoji: '💫' },
+  { name: 'Alnilam', tone: 'Firm', pitch: 'Lower middle pitch', personality: 'Твёрдый, уверенный, для мотивации и инструкций', gender: 'male', emoji: '⚔️' },
+  { name: 'Aoede', tone: 'Breezy', pitch: 'Middle pitch', personality: 'Лёгкий, воздушный, для повседневных бесед', gender: 'female', emoji: '🍃' },
+  { name: 'Autonoe', tone: 'Bright', pitch: 'Middle pitch', personality: 'Яркий, энергичный, для радостных новостей', gender: 'female', emoji: '✨' },
+  { name: 'Callirrhoe', tone: 'Easy-going', pitch: 'Middle pitch', personality: 'Непринуждённый, расслабленный, для дружеского тона', gender: 'female', emoji: '🌊' },
+  { name: 'Charon', tone: 'Informative', pitch: 'Lower pitch', personality: 'Информативный, взвешенный, для фактов и новостей', gender: 'male', emoji: '🚢' },
+  { name: 'Despina', tone: 'Smooth', pitch: 'Middle pitch', personality: 'Гладкий, ровный, универсальный', gender: 'female', emoji: '💎' },
+  { name: 'Enceladus', tone: 'Breathy', pitch: 'Lower pitch', personality: 'Дыхательный, интимный, для тихих моментов', gender: 'male', emoji: '🪐' },
+  { name: 'Erinome', tone: 'Clear', pitch: 'Middle pitch', personality: 'Чёткий, ясный, для объяснений и обучения', gender: 'female', emoji: '📖' },
+  { name: 'Fenrir', tone: 'Excitable', pitch: 'Lower middle pitch', personality: 'Возбудимый, эмоциональный, для шуток и сюрпризов', gender: 'male', emoji: '🐺' },
+  { name: 'Gacrux', tone: 'Mature', pitch: 'Middle pitch', personality: 'Зрелый, мудрый, для советов и размышлений', gender: 'male', emoji: '🦉' },
+  { name: 'Iapetus', tone: 'Clear', pitch: 'Lower middle pitch', personality: 'Чёткий, глубокий, для деловых разговоров', gender: 'male', emoji: '🏛️' },
+  { name: 'Kore', tone: 'Firm', pitch: 'Middle pitch', personality: 'Твёрдый, сбалансированный, хороший дефолт', gender: 'female', emoji: '🌺' },
+  { name: 'Laomedeia', tone: 'Upbeat', pitch: 'Higher pitch', personality: 'Жизнерадостный, бодрый, для утренних приветствий', gender: 'female', emoji: '☀️' },
+  { name: 'Leda', tone: 'Youthful', pitch: 'Higher pitch', personality: 'Молодой, игривый, энергичный, текущий дефолт', gender: 'female', emoji: '🦢' },
+  { name: 'Orus', tone: 'Firm', pitch: 'Lower middle pitch', personality: 'Твёрдый, уверенный, для мотивации', gender: 'male', emoji: '🌋' },
+  { name: 'Puck', tone: 'Upbeat', pitch: 'Middle pitch', personality: 'Весёлый, оживлённый, для шуток', gender: 'male', emoji: '🎭' },
+  { name: 'Pulcherrima', tone: 'Forward', pitch: 'Middle pitch', personality: 'Напористый, прямой, для важных напоминаний', gender: 'female', emoji: '⚡' },
+  { name: 'Rasalgethi', tone: 'Informative', pitch: 'Middle pitch', personality: 'Информативный, нейтральный, для новостей', gender: 'male', emoji: '📡' },
+  { name: 'Sadachbia', tone: 'Lively', pitch: 'Lower pitch', personality: 'Живой, динамичный, для активных обсуждений', gender: 'male', emoji: '🔥' },
+  { name: 'Sadaltager', tone: 'Knowledgeable', pitch: 'Middle pitch', personality: 'Знающий, экспертный, для обучения', gender: 'male', emoji: '🎓' },
+  { name: 'Schedar', tone: 'Even', pitch: 'Lower middle pitch', personality: 'Ровный, стабильный, для долгих бесед', gender: 'female', emoji: '🍁' },
+  { name: 'Sulafat', tone: 'Warm', pitch: 'Middle pitch', personality: 'Тёплый, уютный, для поддержки и заботы', gender: 'female', emoji: '🧣' },
+  { name: 'Umbriel', tone: 'Easy-going', pitch: 'Lower middle pitch', personality: 'Непринуждённый, мягкий, для вечерних разговоров', gender: 'male', emoji: '🌙' },
+  { name: 'Vindemiatrix', tone: 'Gentle', pitch: 'Middle pitch', personality: 'Нежный, ласковый, для утешения', gender: 'female', emoji: '💌' },
+  { name: 'Zephyr', tone: 'Current', pitch: 'Bright', personality: 'Современный, яркий, для молодёжного тона', gender: 'male', emoji: '💨' },
+  { name: 'Zubenelgenubi', tone: 'Casual', pitch: 'Lower middle pitch', personality: 'Неформальный, расслабленный, для друзей', gender: 'male', emoji: '🛋️' },
 ];
 
 export function getVoiceProfiles(): VoiceProfile[] {
