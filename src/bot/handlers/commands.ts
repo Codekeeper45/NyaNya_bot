@@ -1,4 +1,5 @@
 import type { Bot } from 'grammy';
+import { InlineKeyboard } from 'grammy';
 import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
@@ -6,9 +7,6 @@ import { graphRag } from '../../graphrag/index.js';
 import { validateVoiceName } from '../../voice/tts.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
-
-// Track users who have issued /reset and are awaiting confirmation
-const pendingReset = new Set<number>();
 
 const log = createChildLogger('commands');
 
@@ -50,7 +48,6 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       return;
     }
 
-    // Launch onboarding via orchestrator
     try {
       const { runOrchestrator } = await import('../../agent/orchestrator.js');
       await runOrchestrator({
@@ -90,13 +87,38 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     await ctx.reply('Отлично, я снова на связи! 💛');
   });
 
+  // ── /reset — show inline confirmation ──
   botInstance.command('reset', async (ctx) => {
     if (!ctx.dbUser) return;
-    pendingReset.add(ctx.dbUser.id);
-    setTimeout(() => pendingReset.delete(ctx.dbUser!.id), 60_000).unref();
-    await ctx.reply('⚠️ Это удалит всю мою память о тебе. Уверен(а)?\n\nОтправь "да, сброс" для подтверждения. Запрос истекает через 60 секунд.');
+    const kb = new InlineKeyboard()
+      .text('🗑 Да, стереть всё', 'cmd:reset_confirm')
+      .row()
+      .text('❌ Отмена', 'cmd:reset_cancel');
+    await ctx.reply(
+      '⚠️ *Это необратимо*\n\nБудет удалена вся переписка, факты, привычки и расписания. Вернуть будет нельзя.\n\nТы уверен?',
+      { parse_mode: 'Markdown', reply_markup: kb },
+    );
   });
 
+  // ── /reschedule — show inline confirmation ──
+  botInstance.command('reschedule', async (ctx) => {
+    if (!ctx.dbUser) return;
+    if (!ctx.dbUser.onboardingComplete) {
+      await ctx.reply('Сначала пройди онбординг — я ещё не знаю твоё расписание. Напиши /start');
+      return;
+    }
+
+    const kb = new InlineKeyboard()
+      .text('✅ Да, пересоздать', 'cmd:reschedule_confirm')
+      .row()
+      .text('❌ Отмена', 'cmd:reschedule_cancel');
+    await ctx.reply(
+      '⏰ *Пересоздание расписания*\n\nВсе текущие напоминания будут удалены и созданы заново с актуальными настройками.\n\nПродолжить?',
+      { parse_mode: 'Markdown', reply_markup: kb },
+    );
+  });
+
+  // ── /gcal — connect Google Calendar ──
   botInstance.command('gcal', async (ctx) => {
     if (!ctx.dbUser) return;
 
@@ -120,13 +142,26 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     );
   });
 
+  // ── /gcal_reset — show inline confirmation ──
   botInstance.command('gcal_reset', async (ctx) => {
     if (!ctx.dbUser) return;
-    await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: null });
-    await ctx.reply('🗑 Google Calendar отключён. Используй /gcal чтобы подключить снова.');
+
+    if (!ctx.dbUser.googleRefreshToken) {
+      await ctx.reply('Google Calendar и так не подключён. Используй /gcal чтобы подключить.');
+      return;
+    }
+
+    const kb = new InlineKeyboard()
+      .text('🗑 Да, отключить', 'cmd:gcal_reset_confirm')
+      .row()
+      .text('❌ Отмена', 'cmd:gcal_reset_cancel');
+    await ctx.reply(
+      '📅 *Отключение Google Calendar*\n\nЯ перестану видеть твои события и напоминания из календаря.\n\nОтключить?',
+      { parse_mode: 'Markdown', reply_markup: kb },
+    );
   });
 
-  // OAuth callback URL and reset confirmation (single handler to guarantee order)
+  // ── OAuth callback handler ──
   botInstance.on('message:text', async (ctx, next) => {
     if (!ctx.dbUser) return next();
 
@@ -145,53 +180,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       return;
     }
 
-    if (ctx.message.text.toLowerCase().trim() === 'да, сброс' && pendingReset.has(ctx.dbUser.id)) {
-      pendingReset.delete(ctx.dbUser.id);
-      await Promise.all([
-        messagesRepo.deleteAllForUser(ctx.dbUser.id),
-        graphRag.deleteAllForUser(ctx.dbUser.id),
-      ]);
-      await ctx.reply('🗑 Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
-      return;
-    }
-
     return next();
-  });
-
-  botInstance.command('reschedule', async (ctx) => {
-    if (!ctx.dbUser) return;
-    if (!ctx.dbUser.onboardingComplete) {
-      await ctx.reply('Сначала пройди онбординг — я ещё не знаю твоё расписание. Напиши /start');
-      return;
-    }
-
-    log.info({ userId: ctx.dbUser.id }, '/reschedule command');
-
-    // Re-run setup to recreate all repeating jobs (including new ones like edu-suggestion, weekly-digest)
-    const { setupUserSchedules } = await import('../../scheduler/proactive.js');
-    try {
-      await setupUserSchedules(
-        {
-          id: ctx.dbUser.id,
-          telegramUserId: ctx.from!.id,
-          timezone: ctx.dbUser.timezone,
-          wakeTime: ctx.dbUser.wakeTime ?? '08:00',
-          sleepTime: ctx.dbUser.sleepTime ?? '23:00',
-          weekendWakeTime: ctx.dbUser.weekendWakeTime,
-          weekendSleepTime: ctx.dbUser.weekendSleepTime,
-        },
-        ctx.chat.id,
-        {
-          breakfastTime: ctx.dbUser.breakfastTime ?? '09:00',
-          lunchTime: ctx.dbUser.lunchTime ?? '13:00',
-          dinnerTime: ctx.dbUser.dinnerTime ?? '19:00',
-        },
-      );
-      await ctx.reply('✅ Расписание обновлено! Все напоминания пересозданы с актуальными настройками.');
-    } catch (err) {
-      log.error({ err, userId: ctx.dbUser.id }, 'Failed to reschedule');
-      await ctx.reply('❌ Не удалось обновить расписание. Попробуй позже или напиши разработчику.');
-    }
   });
 
   botInstance.command('index_memory', async (ctx) => {
@@ -211,7 +200,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
     const context = await graphRag.retrieve(ctx.dbUser.id, 'что я знаю о пользователе');
     if (!context || context.trim().length === 0) {
-      await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мной побольше или запусти /index_memory! 🤗');
+      await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мне побольше или запусти /index_memory! 🤗');
       return;
     }
 
@@ -222,7 +211,6 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     if (!ctx.dbUser) return;
     const args = ctx.message.text.split(' ').slice(1);
 
-    // No args — show current voice
     if (args.length === 0) {
       const prefs = (ctx.dbUser.preferences ?? {}) as Record<string, unknown>;
       const current = typeof prefs.voice_name === 'string' ? prefs.voice_name : 'Leda (по умолчанию)';
@@ -230,7 +218,6 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       return;
     }
 
-    // Set new voice
     const requested = args[0];
     const valid = validateVoiceName(requested);
     if (valid.toLowerCase() !== requested.toLowerCase()) {
@@ -242,5 +229,77 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       preferences: { ...(ctx.dbUser.preferences as Record<string, unknown> ?? {}), voice_name: valid },
     });
     await ctx.reply(`✅ Голос изменён на ${valid}!`);
+  });
+
+  // ── Inline confirmation callbacks ──
+
+  botInstance.callbackQuery('cmd:reset_confirm', async (ctx) => {
+    if (!ctx.dbUser) return;
+    await ctx.editMessageText('🗑 Стираю память...');
+    try {
+      await Promise.all([
+        messagesRepo.deleteAllForUser(ctx.dbUser.id),
+        graphRag.deleteAllForUser(ctx.dbUser.id),
+      ]);
+      await ctx.editMessageText('✅ Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
+    } catch (err) {
+      log.error({ err, userId: ctx.dbUser.id }, 'Reset failed');
+      await ctx.editMessageText('❌ Не удалось стереть память. Попробуй позже.');
+    }
+    await ctx.answerCallbackQuery();
+  });
+
+  botInstance.callbackQuery('cmd:reset_cancel', async (ctx) => {
+    await ctx.editMessageText('👌 Отмена. Ничего не удалено.');
+    await ctx.answerCallbackQuery();
+  });
+
+  botInstance.callbackQuery('cmd:reschedule_confirm', async (ctx) => {
+    if (!ctx.dbUser) return;
+    await ctx.editMessageText('⏳ Пересоздаю расписание...');
+    log.info({ userId: ctx.dbUser.id }, '/reschedule confirmed via inline');
+
+    const { setupUserSchedules } = await import('../../scheduler/proactive.js');
+    try {
+      await setupUserSchedules(
+        {
+          id: ctx.dbUser.id,
+          telegramUserId: ctx.from!.id,
+          timezone: ctx.dbUser.timezone,
+          wakeTime: ctx.dbUser.wakeTime ?? '08:00',
+          sleepTime: ctx.dbUser.sleepTime ?? '23:00',
+          weekendWakeTime: ctx.dbUser.weekendWakeTime,
+          weekendSleepTime: ctx.dbUser.weekendSleepTime,
+        },
+        ctx.callbackQuery.message!.chat.id,
+        {
+          breakfastTime: ctx.dbUser.breakfastTime ?? '09:00',
+          lunchTime: ctx.dbUser.lunchTime ?? '13:00',
+          dinnerTime: ctx.dbUser.dinnerTime ?? '19:00',
+        },
+      );
+      await ctx.editMessageText('✅ Расписание обновлено! Все напоминания пересозданы с актуальными настройками.');
+    } catch (err) {
+      log.error({ err, userId: ctx.dbUser.id }, 'Reschedule failed');
+      await ctx.editMessageText('❌ Не удалось обновить расписание. Попробуй позже.');
+    }
+    await ctx.answerCallbackQuery();
+  });
+
+  botInstance.callbackQuery('cmd:reschedule_cancel', async (ctx) => {
+    await ctx.editMessageText('👌 Отмена. Расписание не изменено.');
+    await ctx.answerCallbackQuery();
+  });
+
+  botInstance.callbackQuery('cmd:gcal_reset_confirm', async (ctx) => {
+    if (!ctx.dbUser) return;
+    await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: null });
+    await ctx.editMessageText('✅ Google Calendar отключён. Используй /gcal чтобы подключить снова.');
+    await ctx.answerCallbackQuery();
+  });
+
+  botInstance.callbackQuery('cmd:gcal_reset_cancel', async (ctx) => {
+    await ctx.editMessageText('👌 Отмена. Calendar остаётся подключён.');
+    await ctx.answerCallbackQuery();
   });
 }
