@@ -13,7 +13,7 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('orchestrator');
 
 const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
-const ORCHESTRATOR_TIMEOUT_MS = 120_000;
+const ORCHESTRATOR_TIMEOUT_MS = 600_000;
 const ORCHESTRATOR_TIMEOUT_TEXT = 'Извини, запрос получился слишком объёмным. Я сократила исследование и готова ответить точнее, если сузим тему.';
 
 /**
@@ -148,6 +148,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
           userMessageRecord.id,
         );
         usedEntityIds = entityIds;
+        log.info({ userId: input.userId, entityCount: entityIds.length, contextLen: context?.length ?? 0 }, 'Floating subgraph result');
         if (context && context.trim().length > 0) {
           userMessageText = `[Релевантный контекст из памяти:\n${context}\n]\n\n${input.userMessage}`;
         }

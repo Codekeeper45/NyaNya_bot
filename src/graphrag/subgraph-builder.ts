@@ -40,7 +40,7 @@ export async function buildFloatingSubgraph(
   const activeIds = [...new Set([...seedIds, ...historyEntityIds])];
 
   if (activeIds.length === 0) {
-    log.debug({ userId }, 'No active entities for subgraph');
+    log.info({ userId }, 'No active entities for subgraph');
     return { context: '', entityIds: [] };
   }
 
@@ -75,6 +75,14 @@ export async function buildFloatingSubgraph(
 
   // 10. Format with budget
   const context = formatSubgraphContext(subgraphEntities, neighbors, CONTEXT_BUDGET);
+
+  log.info({
+    userId,
+    seedCount: seedEntities.length,
+    neighborCount: neighbors.length,
+    subgraphEntityCount: subgraphEntities.length,
+    contextLen: context.length,
+  }, 'Subgraph built');
 
   // Return both context and entity IDs for usage tracking
   const usedEntityIds = subgraphEntities.map(e => e.id);

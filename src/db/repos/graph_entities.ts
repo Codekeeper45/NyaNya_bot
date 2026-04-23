@@ -135,7 +135,7 @@ export const graphEntitiesRepo = {
       })
       .from(graphEntities)
       .where(whereClause)
-      .orderBy(sql`final_score DESC`)
+      .orderBy(sql`${graphEntities.embedding} <=> ${embeddingJson}::vector(1536) ASC`)
       .limit(limit);
   },
 };

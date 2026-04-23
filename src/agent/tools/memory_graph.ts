@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { graphRag } from '../../graphrag/index.js';
+import { buildFloatingSubgraph } from '../../graphrag/subgraph-builder.js';
+import { messagesRepo } from '../../db/repos/messages.js';
 import { createChildLogger } from '../../lib/logger.js';
 
 const log = createChildLogger('tools:memory-graph');
@@ -13,11 +14,17 @@ export const memoryGraphTools = (userId: number) => ({
     }),
     execute: async ({ query }) => {
       log.info({ userId, query }, 'memory_search_graph called');
-      const context = await graphRag.retrieve(userId, query);
-      if (!context || context.trim().length === 0) {
-        return { found: false, context: 'Ничего не найдено в памяти по этому запросу.' };
+      try {
+        const recentMessages = await messagesRepo.getRecent(userId, 5);
+        const { context } = await buildFloatingSubgraph(userId, query, recentMessages, 0);
+        if (!context || context.trim().length === 0) {
+          return { found: false, context: 'Ничего не найдено в памяти по этому запросу.' };
+        }
+        return { found: true, context };
+      } catch (err) {
+        log.error({ err, userId, query }, 'memory_search_graph failed');
+        return { found: false, context: 'Ошибка при поиске в памяти.' };
       }
-      return { found: true, context };
     },
   }),
 });

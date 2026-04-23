@@ -11,12 +11,37 @@ const DEFAULT_VOICE = 'Leda';
 const PCM_SAMPLE_RATE = 24_000;
 const PCM_CHANNELS = 1;
 
-let genai: GoogleGenAI | null = null;
+// Build list of all API keys (primary + comma-separated extras)
+function getApiKeys(): string[] {
+  const keys: string[] = [];
+  if (config.googleGenaiApiKey) keys.push(config.googleGenaiApiKey);
+  if (config.googleGenaiApiKeys?.length) keys.push(...config.googleGenaiApiKeys);
+  return [...new Set(keys)]; // dedup
+}
 
-function getGemini(): GoogleGenAI | null {
-  if (!config.googleGenaiApiKey) return null;
-  if (!genai) genai = new GoogleGenAI({ apiKey: config.googleGenaiApiKey });
-  return genai;
+let clients: GoogleGenAI[] = [];
+let currentKeyIndex = 0;
+
+function getClients(): GoogleGenAI[] {
+  if (clients.length > 0) return clients;
+  const keys = getApiKeys();
+  clients = keys.map(key => new GoogleGenAI({ apiKey: key }));
+  return clients;
+}
+
+function getNextClient(): GoogleGenAI | null {
+  const all = getClients();
+  if (all.length === 0) return null;
+  const client = all[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % all.length;
+  return client;
+}
+
+function isQuotaError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.message.includes('429') || err.message.includes('RESOURCE_EXHAUSTED') || err.message.includes('quota');
+  }
+  return false;
 }
 
 export type VoiceGender = 'female' | 'male';
@@ -87,7 +112,7 @@ function buildTtsPrompt(text: string, voiceName: string): string {
     '## THE SCENE',
     'Личная переписка в Telegram. Пользователь — тот, о ком Опекун заботится.',
     '',
-    '### DIRECTOR\'S NOTES',
+    "### DIRECTOR'S NOTES",
     '- Адаптируй тон к контексту сообщения.',
     '- Не зачитывай аудио-теги вслух — они управляют интонацией.',
     '- Preserve meaning exactly. Return only the spoken transcript, no explanations.',
@@ -140,33 +165,46 @@ async function convertPcmToOpusOgg(pcm: Buffer): Promise<Buffer> {
 }
 
 export async function synthesizeSpeech(text: string, voiceName?: string): Promise<Buffer> {
-  const client = getGemini();
-  if (!client) {
-    throw new Error('Gemini API key not configured — TTS unavailable');
+  const clients = getClients();
+  if (clients.length === 0) {
+    throw new Error('No Gemini API keys configured — TTS unavailable');
   }
 
   const voice = validateVoiceName(voiceName ?? '');
+  let lastError: Error | undefined;
 
-  try {
-    const response = await client.models.generateContent({
-      model: GEMINI_TTS_MODEL,
-      contents: [{ parts: [{ text: buildTtsPrompt(text, voice) }] }],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voice },
+  for (let attempt = 0; attempt < clients.length; attempt++) {
+    const client = getNextClient();
+    if (!client) break;
+
+    try {
+      const response = await client.models.generateContent({
+        model: GEMINI_TTS_MODEL,
+        contents: [{ parts: [{ text: buildTtsPrompt(text, voice) }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voice },
+            },
           },
         },
-      },
-    });
+      });
 
-    const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!data) throw new Error('Gemini TTS response did not contain inline audio data');
-    const pcm = Buffer.from(data, 'base64');
-    return await convertPcmToOpusOgg(pcm);
-  } catch (err) {
-    log.error({ err, voice }, 'TTS failed');
-    throw err;
+      const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!data) throw new Error('Gemini TTS response did not contain inline audio data');
+      const pcm = Buffer.from(data, 'base64');
+      return await convertPcmToOpusOgg(pcm);
+    } catch (err) {
+      if (isQuotaError(err)) {
+        log.warn({ voice, attempt: attempt + 1, totalKeys: clients.length }, 'TTS quota exceeded, rotating to next key');
+        lastError = err instanceof Error ? err : new Error(String(err));
+        continue;
+      }
+      throw err;
+    }
   }
+
+  if (lastError) throw lastError;
+  throw new Error('All Gemini API keys exhausted');
 }
