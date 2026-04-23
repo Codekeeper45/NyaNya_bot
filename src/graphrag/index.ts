@@ -5,6 +5,7 @@ import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphChunksRepo } from '../db/repos/graph_chunks.js';
 import { graphEntityMentionsRepo } from '../db/repos/graph_entity_mentions.js';
 import { createChildLogger } from '../lib/logger.js';
+import type { GraphEntity } from '../db/schema.js';
 
 const log = createChildLogger('graphrag');
 
@@ -61,6 +62,26 @@ export const graphRag = {
     } catch (err) {
       log.error({ err, userId }, 'retrieveAll failed');
       return '';
+    }
+  },
+
+  /**
+   * Retrieve ALL raw entities and relationships for a user.
+   * Returns structured data for custom formatting.
+   */
+  async retrieveAllRaw(userId: number): Promise<{ entities: GraphEntity[]; relationships: Awaited<ReturnType<typeof graphRelationshipsRepo.getAllForUser>> } | null> {
+    try {
+      const entities = await graphEntitiesRepo.findAllForUser(userId);
+      const relationships = await graphRelationshipsRepo.getAllForUser(userId);
+
+      if (entities.length === 0 && relationships.length === 0) {
+        return null;
+      }
+
+      return { entities, relationships };
+    } catch (err) {
+      log.error({ err, userId }, 'retrieveAllRaw failed');
+      return null;
     }
   },
 

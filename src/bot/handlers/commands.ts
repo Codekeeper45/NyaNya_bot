@@ -25,6 +25,98 @@ function clearPending(userId: number): void {
   pendingActions.delete(userId);
 }
 
+/**
+ * Categorize an entity based on its name/description heuristics.
+ */
+function categorizeEntity(name: string, description: string): string {
+  const text = (name + ' ' + description).toLowerCase();
+  if (/имя|nickname|ник|зовут|name/.test(text)) return '👤 Личное';
+  if (/город|страна|жив[еу]т|адрес|место|location|city|country/.test(text)) return '📍 Место';
+  if (/работа|профессия|компани|должност|job|work|career|company/.test(text)) return '💼 Работа';
+  if (/хобби|интерес|любит|увлека|hobby|interest|passion/.test(text)) return '🎯 Интересы';
+  if (/семья|родител|жена|муж|дети|брат|сестра|father|mother|family|wife|husband|child/.test(text)) return '👨‍👩‍👧‍👦 Семья';
+  if (/образовани|учеба|школ|университет|education|university|school|degree/.test(text)) return '🎓 Образование';
+  if (/здоровье|болезн|врач|лечени|health|doctor|medicine/.test(text)) return '🏥 Здоровье';
+  return '📌 Другое';
+}
+
+/**
+ * Format entities and relationships into beautiful Markdown chunks.
+ */
+function formatWhoFacts(entities: Array<{ name: string; description: string }>, relationships: Array<{ sourceName: string; description: string; targetName: string }>): string[] {
+  // Group entities by category
+  const groups = new Map<string, Array<{ name: string; description: string }>>();
+  for (const e of entities) {
+    const cat = categorizeEntity(e.name, e.description);
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(e);
+  }
+
+  // Sort categories and entities within
+  const sortedCats = Array.from(groups.keys()).sort();
+  for (const cat of sortedCats) {
+    groups.get(cat)!.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const lines: string[] = [];
+
+  // Header
+  lines.push('🧠 *Вот что я помню о тебе:*');
+  lines.push('');
+
+  // Entities by category
+  let factNum = 1;
+  for (const cat of sortedCats) {
+    lines.push(`${cat}`);
+    for (const e of groups.get(cat)!) {
+      lines.push(`${factNum}. *${e.name}*: ${e.description}`);
+      factNum++;
+    }
+    lines.push('');
+  }
+
+  // Relationships
+  if (relationships.length > 0) {
+    lines.push('🔗 *Связи:*');
+    let relNum = 1;
+    for (const r of relationships.slice(0, 30)) {
+      lines.push(`${relNum}. *${r.sourceName}* → _${r.description}_ → *${r.targetName}*`);
+      relNum++;
+    }
+    lines.push('');
+  }
+
+  // Footer
+  lines.push(`_Всего фактов: ${entities.length}, связей: ${relationships.length}_`);
+
+  return lines;
+}
+
+/**
+ * Split lines into Telegram message chunks (max ~3800 chars to stay under 4096).
+ * Never splits mid-line.
+ */
+function splitIntoMessages(lines: string[], maxLength = 3800): string[] {
+  const messages: string[] = [];
+  let current = '';
+
+  for (const line of lines) {
+    const test = current ? current + '\n' + line : line;
+    if (test.length > maxLength && current) {
+      messages.push(current.trim());
+      current = line;
+    } else {
+      current = test;
+    }
+  }
+
+  if (current) {
+    messages.push(current.trim());
+  }
+
+  return messages;
+}
+
 async function sendMenu(ctx: BotContext, text: string, kb: InlineKeyboard): Promise<void> {
   const userId = ctx.dbUser?.id;
   if (userId) {
@@ -236,15 +328,23 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     log.info({ userId: ctx.dbUser.id }, '/who command');
 
     try {
-      const context = await graphRag.retrieveAll(ctx.dbUser.id);
-      log.info({ userId: ctx.dbUser.id, hasContext: !!context, contextLength: context?.length ?? 0, entityCount: context?.split('\n').filter(l => l.startsWith('—')).length ?? 0 }, '/who retrieveAll result');
-      if (!context || context.trim().length === 0) {
+      const raw = await graphRag.retrieveAllRaw(ctx.dbUser.id);
+      log.info({ userId: ctx.dbUser.id, hasData: !!raw, entityCount: raw?.entities.length ?? 0, relCount: raw?.relationships.length ?? 0 }, '/who retrieveAllRaw result');
+
+      if (!raw || (raw.entities.length === 0 && raw.relationships.length === 0)) {
         await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мной побольше или запусти /index_memory! 🤗');
         return;
       }
-      await ctx.reply(`Вот что я помню о тебе:\n\n${context}`);
+
+      const lines = formatWhoFacts(raw.entities, raw.relationships);
+      const messages = splitIntoMessages(lines, 3800);
+
+      for (let i = 0; i < messages.length; i++) {
+        const prefix = i === 0 ? '' : `_(продолжение ${i + 1}/${messages.length})_\n\n`;
+        await ctx.reply(prefix + messages[i], { parse_mode: 'Markdown' });
+      }
     } catch (err) {
-      log.error({ err, userId: ctx.dbUser.id }, '/who retrieveAll failed');
+      log.error({ err, userId: ctx.dbUser.id }, '/who retrieveAllRaw failed');
       await ctx.reply('Не удалось загрузить память. Попробуй позже.');
     }
   });
