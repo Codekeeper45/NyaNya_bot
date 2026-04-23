@@ -16,6 +16,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   const prefs = params.preferences ?? {};
   const prefsLines: string[] = [];
   if (prefs.voice_default) prefsLines.push('- Общается голосом по умолчанию');
+  if (typeof prefs.voice_name === 'string') prefsLines.push(`- Голос: ${prefs.voice_name}`);
   if (prefs.message_length && prefs.message_length !== 'normal') prefsLines.push(`- Длина ответов: ${prefs.message_length === 'short' ? 'КРАТКО' : 'ПОДРОБНО'}`);
   if (prefs.followup_max_attempts) prefsLines.push(`- Макс. follow-up попыток: ${prefs.followup_max_attempts}`);
   if (Array.isArray(prefs.dietary) && prefs.dietary.length) prefsLines.push(`- Диета: ${(prefs.dietary as string[]).join(', ')}`);
@@ -34,6 +35,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 5. Время завтрака, обеда, ужина
 6. Время отхода ко сну в будни. Спроси про выходные.
 7. Привычки или цели, которые хочет отслеживать → предложи habit_create для каждой
+8. Голос: спроси «Хочешь выбрать мой голос? У меня есть разные — от молодого и игривого до зрелого и спокойного. Напиши /voices чтобы послушать» → если выбрал, сохрани через bot_settings_update(voice_name)
 
 После каждого блока вопросов вызывай followup_ask(delayMinutes: 3–5) если пользователь не ответил (исключение из правила — в онбординге followup_ask разрешён).
 Когда собрал всё — вызови setup_daily_schedule (передай weekendWakeTime/weekendSleepTime если отличаются). Онбординг завершён.` : '';
@@ -170,7 +172,7 @@ ${params.activeJobs ? `\n# Активное расписание\n${params.activ
 - Пишет «подробнее», «расскажи больше» как паттерн → bot_settings_update(message_length: 'detailed')
 - Не отвечает на follow-up 2+ раза подряд → bot_settings_update(followup_max_attempts: 2)
 - Просит отвечать голосом → bot_settings_update(voice_default: true)
-- Просит сменить голос → bot_settings_update(voice_name: "Fenrir") (или другой из списка)
+- Говорит про голос: «мне нравится этот голос», «давай поменяем голос», «хочу другой голос» → предложи /voices, затем bot_settings_update(voice_name: 'Fenrir') (или тот что выбрал)
 - Просит паузу / «не беспокой» → bot_settings_update(paused: true)
 - Называет интересы, диету, темы → bot_settings_update с соответствующими полями
 Текущие настройки: ${prefsBlock || 'стандартные'}
