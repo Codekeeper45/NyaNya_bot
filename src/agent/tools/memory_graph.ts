@@ -13,7 +13,12 @@ export const memoryGraphTools = (userId: number) => ({
     }),
     execute: async ({ query }) => {
       log.info({ userId, query }, 'memory_search_graph called');
-      const context = await graphRag.retrieve(userId, query);
+      let context = await graphRag.retrieve(userId, query);
+      // Fallback: if semantic search returned nothing, try dumping all entities
+      if (!context || context.trim().length === 0) {
+        log.debug({ userId, query }, 'Semantic search empty, trying retrieveAll');
+        context = await graphRag.retrieveAll(userId);
+      }
       if (!context || context.trim().length === 0) {
         return { found: false, context: 'Ничего не найдено в памяти по этому запросу.' };
       }
