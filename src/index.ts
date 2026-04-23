@@ -7,7 +7,6 @@ import { contextMiddleware } from './bot/middleware/context.js';
 import { registerCommands } from './bot/handlers/commands.js';
 import { registerMessageHandler } from './bot/handlers/message.js';
 import { registerVoiceHandler } from './bot/handlers/voice.js';
-import { registerVoiceBrowser } from './bot/handlers/voice-browser.js';
 import { startWorker } from './scheduler/worker.js';
 import { restoreSchedules, syncSchedules } from './scheduler/proactive.js';
 import { runDailyPatternDetection } from './scheduler/patterns.js';
@@ -32,7 +31,6 @@ bot.use(contextMiddleware);
 registerCommands(bot);
 registerMessageHandler(bot);
 registerVoiceHandler(bot);
-registerVoiceBrowser(bot);
 
 // Restore repeating schedules lost from Redis (e.g. after restart)
 restoreSchedules().catch(err => log.error({ err }, 'Failed to restore schedules'));
