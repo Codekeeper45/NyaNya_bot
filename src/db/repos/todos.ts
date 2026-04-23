@@ -47,4 +47,8 @@ export const todosRepo = {
       .where(and(eq(todos.id, id), eq(todos.userId, userId)));
     return (result.rowCount ?? 0) > 0;
   },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    await db().delete(todos).where(eq(todos.userId, userId));
+  },
 };

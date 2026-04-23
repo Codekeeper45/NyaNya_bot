@@ -47,4 +47,8 @@ export const expensesRepo = {
       .groupBy(expenses.category);
     return rows;
   },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    await db().delete(expenses).where(eq(expenses.userId, userId));
+  },
 };

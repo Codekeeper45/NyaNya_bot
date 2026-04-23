@@ -136,7 +136,8 @@ export function registerVoiceBrowser(botInstance: Bot<BotContext>): void {
         }
 
         case 'back': {
-          const prefs = (ctx.dbUser.preferences ?? {}) as Record<string, unknown>;
+          const user = await usersRepo.findById(ctx.dbUser.id);
+          const prefs = (user?.preferences ?? {}) as Record<string, unknown>;
           const current = typeof prefs.voice_name === 'string' ? prefs.voice_name : 'Leda';
           try {
             await ctx.editMessageText(

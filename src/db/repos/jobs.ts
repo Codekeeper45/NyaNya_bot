@@ -39,4 +39,8 @@ export const jobsRepo = {
       .limit(1);
     return result.length > 0;
   },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    await db().delete(jobs).where(eq(jobs.userId, userId));
+  },
 };

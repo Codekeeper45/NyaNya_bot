@@ -72,4 +72,13 @@ export const habitsRepo = {
       .where(and(eq(habitLogs.habitId, habitId), inArray(habitLogs.date, dates)))
       .orderBy(desc(habitLogs.date));
   },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    const userHabits = await this.findByUser(userId);
+    if (userHabits.length > 0) {
+      const habitIds = userHabits.map(h => h.id);
+      await db().delete(habitLogs).where(inArray(habitLogs.habitId, habitIds));
+    }
+    await db().delete(habits).where(eq(habits.userId, userId));
+  },
 };

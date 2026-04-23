@@ -104,4 +104,8 @@ export const jobExecutionsRepo = {
       ));
     return Number(rows[0]?.count ?? 0);
   },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    await db().delete(jobExecutions).where(eq(jobExecutions.userId, userId));
+  },
 };

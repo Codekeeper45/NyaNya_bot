@@ -3,12 +3,34 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
+import { habitsRepo } from '../../db/repos/habits.js';
+import { todosRepo } from '../../db/repos/todos.js';
+import { expensesRepo } from '../../db/repos/expenses.js';
+import { jobsRepo } from '../../db/repos/jobs.js';
+import { jobExecutionsRepo } from '../../db/repos/job_executions.js';
+import { lessonPlansRepo } from '../../db/repos/lesson_plans.js';
+import { repeatingJobsRepo } from '../../db/repos/repeating_jobs.js';
+import { jobSkipOnceRepo } from '../../db/repos/job_skip_once.js';
+import { graphIndexStateRepo } from '../../db/repos/graph_index_state.js';
 import { graphRag } from '../../graphrag/index.js';
 import { validateVoiceName } from '../../voice/tts.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
 
 const log = createChildLogger('commands');
+
+const pendingActions = new Set<number>();
+
+function isPending(userId: number): boolean {
+  return pendingActions.has(userId);
+}
+function markPending(userId: number): void {
+  pendingActions.add(userId);
+  setTimeout(() => pendingActions.delete(userId), 30_000).unref();
+}
+function clearPending(userId: number): void {
+  pendingActions.delete(userId);
+}
 
 export function registerCommands(botInstance: Bot<BotContext>): void {
   const HELP_TEXT = `Привет! Я Опекун — твой AI-наставник и помощник 💛
@@ -235,16 +257,44 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
   botInstance.callbackQuery('cmd:reset_confirm', async (ctx) => {
     if (!ctx.dbUser) return;
-    await ctx.editMessageText('🗑 Стираю память...');
+    if (isPending(ctx.dbUser.id)) {
+      await ctx.answerCallbackQuery({ text: 'Уже обрабатываю...' });
+      return;
+    }
+    markPending(ctx.dbUser.id);
+
+    await ctx.editMessageText('🗑 Стираю всё...');
     try {
+      const userId = ctx.dbUser.id;
+
+      const repeatingJobs = await repeatingJobsRepo.deleteAllForUser(userId);
+      for (const job of repeatingJobs) {
+        try { await jobSkipOnceRepo.clear(job.schedulerId); } catch {}
+      }
+
       await Promise.all([
-        messagesRepo.deleteAllForUser(ctx.dbUser.id),
-        graphRag.deleteAllForUser(ctx.dbUser.id),
+        messagesRepo.deleteAllForUser(userId),
+        graphRag.deleteAllForUser(userId),
+        graphIndexStateRepo.deleteForUser(userId),
+        habitsRepo.deleteAllForUser(userId),
+        todosRepo.deleteAllForUser(userId),
+        expensesRepo.deleteAllForUser(userId),
+        jobsRepo.deleteAllForUser(userId),
+        jobExecutionsRepo.deleteAllForUser(userId),
+        lessonPlansRepo.deleteAllForUser(userId),
       ]);
-      await ctx.editMessageText('✅ Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
+
+      await usersRepo.update(userId, {
+        preferences: {},
+        paused: false,
+      });
+
+      await ctx.editMessageText('✅ Готово — я забыла всё что знала о тебе. Все данные удалены. Можем начать с чистого листа!');
     } catch (err) {
       log.error({ err, userId: ctx.dbUser.id }, 'Reset failed');
-      await ctx.editMessageText('❌ Не удалось стереть память. Попробуй позже.');
+      await ctx.editMessageText('❌ Не удалось стереть данные полностью. Часть данных может остаться. Попробуй позже.');
+    } finally {
+      clearPending(ctx.dbUser.id);
     }
     await ctx.answerCallbackQuery();
   });

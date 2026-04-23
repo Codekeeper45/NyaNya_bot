@@ -33,4 +33,8 @@ export const graphIndexStateRepo = {
         .values({ userId, lastIndexedMessageId, updatedAt: new Date() });
     }
   },
+
+  async deleteForUser(userId: number): Promise<void> {
+    await db().delete(graphIndexState).where(eq(graphIndexState.userId, userId));
+  },
 };
