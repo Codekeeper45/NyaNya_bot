@@ -8,18 +8,18 @@ const log = createChildLogger('graphrag:retrieval');
 
 const SEED_ENTITIES_LIMIT = 5;
 const CHUNKS_LIMIT = 2;
+const MAX_ENTITY_DISTANCE = 0.15; // cosine distance; 0.15 ≈ similarity 0.85
 
 export async function retrieveContext(userId: number, query: string): Promise<string> {
   try {
     const queryEmbedding = await embedText(query);
 
-    // 1. Semantic entry: find seed entities
-    const seedEntities = await graphEntitiesRepo.searchSimilar(userId, queryEmbedding, SEED_ENTITIES_LIMIT);
+    // 1. Semantic entry: find seed entities, filter by relevance threshold
+    const rawEntities = await graphEntitiesRepo.searchSimilar(userId, queryEmbedding, SEED_ENTITIES_LIMIT);
+    const seedEntities = rawEntities.filter(e => e.distance < MAX_ENTITY_DISTANCE);
     if (seedEntities.length === 0) {
-      log.debug({ userId }, 'No seed entities found');
-      // Fallback: search chunks directly
-      const chunks = await graphChunksRepo.searchSimilar(userId, queryEmbedding, CHUNKS_LIMIT);
-      return chunks.map(c => `— ${c.content}`).join('\n');
+      log.debug({ userId }, 'No sufficiently relevant seed entities found');
+      return '';
     }
 
     // 2. Graph traversal: 1-2 hops neighbors

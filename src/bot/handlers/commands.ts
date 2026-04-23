@@ -2,7 +2,6 @@ import type { Bot } from 'grammy';
 import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
-import { mem0 } from '../../memory/mem0.js';
 import { graphRag } from '../../graphrag/index.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
@@ -109,9 +108,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
     if (ctx.message.text.toLowerCase().trim() === 'да, сброс' && pendingReset.has(ctx.dbUser.id)) {
       pendingReset.delete(ctx.dbUser.id);
-      const uid = String(ctx.from!.id);
       await Promise.all([
-        mem0.deleteAll(uid),
         messagesRepo.deleteAllForUser(ctx.dbUser.id),
         graphRag.deleteAllForUser(ctx.dbUser.id),
       ]);
@@ -172,16 +169,13 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
   botInstance.command('who', async (ctx) => {
     if (!ctx.dbUser) return;
-    const uid = String(ctx.from!.id);
 
-    const memories = await mem0.getAll(uid);
-    if (memories.length === 0) {
-      await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мной побольше! 🤗');
+    const context = await graphRag.retrieve(ctx.dbUser.id, 'что я знаю о пользователе');
+    if (!context || context.trim().length === 0) {
+      await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мной побольше или запусти /index_memory! 🤗');
       return;
     }
 
-    const top = memories.slice(0, 20);
-    const lines = top.map((m: { memory?: string }, i: number) => `${i + 1}. ${m.memory ?? '?'}`);
-    await ctx.reply(`Вот что я помню о тебе:\n\n${lines.join('\n')}`);
+    await ctx.reply(`Вот что я помню о тебе:\n\n${context}`);
   });
 }

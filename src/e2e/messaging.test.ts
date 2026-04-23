@@ -38,8 +38,8 @@ vi.mock('../db/repos/messages.js', () => ({
   },
 }));
 
-vi.mock('../memory/mem0.js', () => ({
-  mem0: { search: vi.fn().mockResolvedValue([]), add: vi.fn(), getAll: vi.fn().mockResolvedValue([]), deleteAll: vi.fn() },
+vi.mock('../graphrag/index.js', () => ({
+  graphRag: { retrieve: vi.fn().mockResolvedValue(''), indexUser: vi.fn(), deleteAllForUser: vi.fn() },
 }));
 
 vi.mock('../scheduler/jobs.js', () => ({

@@ -38,12 +38,11 @@ vi.mock('../db/repos/messages.js', () => ({
   },
 }));
 
-vi.mock('../memory/mem0.js', () => ({
-  mem0: {
-    search: vi.fn().mockResolvedValue([]),
-    add: vi.fn().mockResolvedValue(undefined),
-    getAll: mocks.getAll,
-    deleteAll: mocks.deleteAll,
+vi.mock('../graphrag/index.js', () => ({
+  graphRag: {
+    retrieve: mocks.getAll,
+    deleteAllForUser: mocks.deleteAll,
+    indexUser: vi.fn(),
   },
 }));
 
@@ -157,8 +156,8 @@ describe('T-05: /who command', () => {
     mocks.isOAuthCallbackUrl.mockReturnValue(false);
   });
 
-  it('shows "no memories" when mem0 is empty', async () => {
-    mocks.getAll.mockResolvedValue([]);
+  it('shows "no memories" when graph is empty', async () => {
+    mocks.getAll.mockResolvedValue('');
     const bot = createTestBot();
     await bot.handleUpdate(makeCommandUpdate('who'));
 
@@ -169,17 +168,14 @@ describe('T-05: /who command', () => {
     );
   });
 
-  it('lists top memories when present', async () => {
-    mocks.getAll.mockResolvedValue([
-      { memory: 'Любит кофе' },
-      { memory: 'Студент' },
-    ]);
+  it('lists memories when present', async () => {
+    mocks.getAll.mockResolvedValue('Релевантные сущности:\n— Кофе: любит кофе\n');
     const bot = createTestBot();
     await bot.handleUpdate(makeCommandUpdate('who'));
 
     expect(mocks.sendMessage).toHaveBeenCalledWith(
       expect.any(Number),
-      expect.stringContaining('Любит кофе'),
+      expect.stringContaining('Кофе'),
       expect.any(Object),
     );
   });

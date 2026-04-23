@@ -15,6 +15,7 @@ import { callTools } from './call.js';
 import { expenseTools } from './expenses.js';
 import { todoTools } from './todos.js';
 import { planTools } from './plans.js';
+import { memoryGraphTools } from './memory_graph.js';
 
 export function allTools(ctx: OrchestratorInput) {
   const { tools: msgTools, wasSent } = messagingTools(ctx.telegramChatId, ctx.userId);
@@ -24,7 +25,7 @@ export function allTools(ctx: OrchestratorInput) {
 
   const tools = {
     ...msgTools,
-    ...memoryTools(ctx.telegramUserId),
+    ...memoryTools(ctx.userId),
     ...profileTools(ctx.userId),
     ...scheduleTools(
       ctx.userId,
@@ -47,6 +48,7 @@ export function allTools(ctx: OrchestratorInput) {
     ...expenseTools(ctx.userId, ctx.userTimezone),
     ...todoTools(ctx.userId, ctx.userTimezone),
     ...planTools(ctx.userId, ctx.telegramUserId, ctx.telegramChatId, ctx.userTimezone),
+    ...memoryGraphTools(ctx.userId),
   };
 
   return { tools, wasSent, getOnboardingCompleted: () => onboardingCompleted };

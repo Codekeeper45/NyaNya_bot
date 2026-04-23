@@ -3,7 +3,6 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { config } from '../config.js';
 import { buildSystemPrompt } from './prompts/system.js';
 import { buildProactivePrompt } from './prompts/proactive.js';
-import { mem0 } from '../memory/mem0.js';
 import { graphRag } from '../graphrag/index.js';
 import { messagesRepo } from '../db/repos/messages.js';
 import { listRepeatingJobs } from '../scheduler/jobs.js';
@@ -44,6 +43,19 @@ function extractCleanText(raw: string): string | null {
   return null;
 }
 
+/**
+ * Skip GraphRAG retrieval for trivial messages to save latency and cost.
+ */
+function shouldRetrieveContext(query: string): boolean {
+  const trimmed = query.trim();
+  if (trimmed.length < 15) return false;
+  if (trimmed.startsWith('/')) return false;
+  // Greetings and confirmations (Russian + basic English)
+  const trivialPattern = /^(привет|ок|окей|да|нет|спасибо|благодарю|хай|здравствуй|пока|добрый|доброе|hi|hello|hey|ok|okay|yes|no|thanks|bye)\b/i;
+  if (trivialPattern.test(trimmed)) return false;
+  return true;
+}
+
 export interface OrchestratorInput {
   userId: number;
   telegramUserId: number;
@@ -66,32 +78,12 @@ export interface OrchestratorInput {
 }
 
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
-  const uid = String(input.telegramUserId);
-
-  // 1. Search Mem0 for relevant context (graceful fallback on rate limit / errors)
-  const query = input.userMessage ?? input.proactiveContext ?? '';
-  let memories: string[] = [];
-  try {
-    const memoryResults = await mem0.search(query, uid);
-    memories = memoryResults.map((m: { memory?: string }) => m.memory ?? '').filter(Boolean);
-  } catch (err) {
-    log.warn({ userId: input.userId, err }, 'Mem0 search failed, proceeding without memories');
-  }
-
-  // 2. Load recent message history from Postgres
+  // 1. Load recent message history from Postgres
   const recentMessages = await messagesRepo.getRecent(input.userId, 20);
   const messageHistory: ModelMessage[] = [...recentMessages].reverse().map(m => ({
     role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
     content: m.content,
   }));
-
-  // 2.5. GraphRAG retrieval — semantic memory from knowledge graph
-  let graphContext = '';
-  try {
-    graphContext = await graphRag.retrieve(input.userId, query);
-  } catch (err) {
-    log.warn({ userId: input.userId, err }, 'GraphRAG retrieval failed');
-  }
 
   // 3. Build system prompt
   const now = new Date();
@@ -107,8 +99,6 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     userId: input.userId,
     userTimezone: input.userTimezone,
     currentTime,
-    memories,
-    graphContext,
     wakeTime: input.wakeTime,
     sleepTime: input.sleepTime,
     weekendWakeTime: input.weekendWakeTime,
@@ -133,8 +123,24 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     | { type: 'image'; image: string; mimeType: string };
 
   if (input.userMessage) {
-    const userContent: UserContentPart[] = [{ type: 'text', text: input.userMessage }];
-    
+    let userMessageText = input.userMessage;
+
+    // Auto-augment user query with GraphRAG context (if highly relevant — threshold filter in retrieval.ts)
+    if (shouldRetrieveContext(input.userMessage)) {
+      try {
+        const graphContext = await graphRag.retrieve(input.userId, input.userMessage);
+        if (graphContext && graphContext.trim().length > 0) {
+          userMessageText = `[Релевантный контекст из памяти:\n${graphContext}\n]\n\n${input.userMessage}`;
+        }
+      } catch (err) {
+        log.warn({ userId: input.userId, err }, 'GraphRAG auto-retrieval failed');
+      }
+    } else {
+      log.debug({ userId: input.userId, query: input.userMessage }, 'Skipping GraphRAG retrieval — trivial message');
+    }
+
+    const userContent: UserContentPart[] = [{ type: 'text', text: userMessageText }];
+
     if (input.images && input.images.length > 0) {
       for (const img of input.images) {
         userContent.push({
@@ -252,18 +258,4 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     }
   }
 
-  // 7. Extract memories from conversation
-  const conversationForMemory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-  if (input.userMessage) {
-    conversationForMemory.push({ role: 'user', content: input.userMessage });
-  }
-  for (const step of result.steps) {
-    if (step.text) {
-      conversationForMemory.push({ role: 'assistant', content: step.text });
-    }
-  }
-  const hasAssistant = conversationForMemory.some(m => m.role === 'assistant');
-  if (conversationForMemory.length > 0 && hasAssistant) {
-    await mem0.add(conversationForMemory, uid);
-  }
 }

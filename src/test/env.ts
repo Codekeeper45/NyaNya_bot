@@ -5,5 +5,4 @@ process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost/test';
 process.env.UPSTASH_REDIS_URL = 'redis://localhost:6379';
 process.env.UPSTASH_REDIS_TOKEN = 'test-token';
-process.env.MEM0_API_KEY = 'test-mem0-key';
 process.env.NODE_ENV = 'test';

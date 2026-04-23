@@ -24,12 +24,7 @@ vi.mock('./prompts/proactive.js', () => ({
   buildProactivePrompt: vi.fn(() => 'proactive-prompt'),
 }));
 
-vi.mock('../memory/mem0.js', () => ({
-  mem0: {
-    search: vi.fn(async () => []),
-    add: vi.fn(async () => ({})),
-  },
-}));
+
 
 vi.mock('../db/repos/messages.js', () => ({
   messagesRepo: {
