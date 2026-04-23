@@ -8,7 +8,7 @@ import { messagesRepo } from '../db/repos/messages.js';
 import { listRepeatingJobs } from '../scheduler/jobs.js';
 import { allTools } from './tools/index.js';
 import { bot } from '../bot/bot.js';
-import { markdownToHtml } from './tools/messaging.js';
+import { markdownToHtml, stripAudioTags } from './tools/messaging.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('orchestrator');
@@ -239,8 +239,9 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
 
   // 6. Fallback: если модель не вызвала message_send_text — отправляем result.text напрямую
   if (!wasSent() && result.text?.trim()) {
-    const clean = extractCleanText(result.text);
+    let clean = extractCleanText(result.text);
     if (clean) {
+      clean = stripAudioTags(clean);
       log.warn({ userId: input.userId }, 'Model did not call message_send_text — sending extracted fallback text');
       try {
         await bot.api.sendMessage(input.telegramChatId, markdownToHtml(clean), { parse_mode: 'HTML' });

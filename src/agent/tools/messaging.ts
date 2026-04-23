@@ -10,7 +10,7 @@ const log = createChildLogger('tool:messaging');
 
 // Audio tags like [excited], [sighs], [short pause] — allowed only in voice messages
 // This function strips them from text messages to avoid visual garbage
-function stripAudioTags(text: string): string {
+export function stripAudioTags(text: string): string {
   return text
     .replace(/\s*\[[^\]]+\]\s*/g, ' ')  // replace tag+surrounding spaces with single space
     .replace(/\s{2,}/g, ' ')            // collapse multiple spaces
