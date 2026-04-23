@@ -6,7 +6,7 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('graphrag:extraction');
 
 const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
-const EXTRACTION_MODEL = 'google/gemini-2.5-flash:free';
+const EXTRACTION_MODEL = 'openrouter/free';
 
 interface Triplet {
   subject: string;
