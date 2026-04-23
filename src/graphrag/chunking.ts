@@ -3,6 +3,7 @@
  * Targets ~500-800 tokens per chunk (approximated as 4 chars per token for Russian).
  */
 export function chunkText(text: string, maxChars = 2400, overlapChars = 400): string[] {
+  if (!text.trim()) return [];
   if (text.length <= maxChars) return [text];
 
   const sentences = text.match(/[^.!?]+[.!?]+\s*/g) ?? [text];
