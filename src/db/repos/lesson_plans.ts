@@ -105,8 +105,4 @@ export const lessonPlansRepo = {
       completedPlans: Number(completedResult[0]?.value ?? 0),
     };
   },
-
-  async deleteAllForUser(userId: number): Promise<void> {
-    await db().delete(lessonPlans).where(eq(lessonPlans.userId, userId));
-  },
 };

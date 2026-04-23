@@ -46,10 +46,4 @@ export const repeatingJobsRepo = {
     const rows = await db().select().from(repeatingJobs).where(eq(repeatingJobs.schedulerId, schedulerId)).limit(1);
     return rows[0];
   },
-
-  async deleteAllForUser(userId: number): Promise<RepeatingJob[]> {
-    const rows = await db().select().from(repeatingJobs).where(eq(repeatingJobs.userId, userId));
-    await db().delete(repeatingJobs).where(eq(repeatingJobs.userId, userId));
-    return rows;
-  },
 };

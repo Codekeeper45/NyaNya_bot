@@ -48,7 +48,4 @@ export const expensesRepo = {
     return rows;
   },
 
-  async deleteAllForUser(userId: number): Promise<void> {
-    await db().delete(expenses).where(eq(expenses.userId, userId));
-  },
 };

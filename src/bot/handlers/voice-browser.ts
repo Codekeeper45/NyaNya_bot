@@ -16,7 +16,8 @@ function cb(action: string, ...params: string[]): string {
 function parseCb(data: string): { action: string; params: string[] } | null {
   if (!data.startsWith(CALLBACK_PREFIX + ':')) return null;
   const parts = data.split(':');
-  return { action: parts[1], params: parts.slice(2) };
+  if (parts.length < 2) return null;
+  return { action: parts[1]!, params: parts.slice(2) };
 }
 
 const MALE_VOICES = VOICE_PROFILES.filter(v => v.gender === 'male');
@@ -55,14 +56,21 @@ function voiceCardKeyboard(voiceName: string): InlineKeyboard {
 
 export function registerVoiceBrowser(botInstance: Bot<BotContext>): void {
   botInstance.command('voices', async (ctx) => {
+    log.info({ userId: ctx.dbUser?.id, hasDbUser: !!ctx.dbUser }, '/voices command received');
     if (!ctx.dbUser) return;
     const prefs = (ctx.dbUser.preferences ?? {}) as Record<string, unknown>;
     const current = typeof prefs.voice_name === 'string' ? prefs.voice_name : 'Leda';
 
-    await ctx.reply(
-      `🎙 Выбор голоса\n\nТекущий голос: *${current}*\n\nВыбери категорию:`,
-      { parse_mode: 'Markdown', reply_markup: categoryKeyboard() },
-    );
+    try {
+      await ctx.reply(
+        `🎙 Выбор голоса\n\nТекущий голос: *${current}*\n\nВыбери категорию:`,
+        { parse_mode: 'Markdown', reply_markup: categoryKeyboard() },
+      );
+      log.info({ userId: ctx.dbUser.id }, '/voices reply sent');
+    } catch (err) {
+      log.error({ err, userId: ctx.dbUser.id }, 'Failed to send /voices reply');
+      await ctx.reply('Не удалось показать каталог голосов. Попробуй позже.');
+    }
   });
 
   botInstance.callbackQuery(new RegExp(`^${CALLBACK_PREFIX}:`), async (ctx) => {

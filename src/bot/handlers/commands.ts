@@ -35,7 +35,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 🧠 Память
 /who — что я помню о тебе
 /index_memory — обновить мою память (индексация переписки)
-/reset — стереть всю память и начать с чистого листа
+/reset — стереть мою память о тебе (переписка и факты)
 
 🎙 Голос
 /voices — выбрать голос (интерактивный каталог)
@@ -109,7 +109,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       .row()
       .text('❌ Отмена', 'cmd:reset_cancel');
     await ctx.reply(
-      '⚠️ *Это необратимо*\n\nБудет удалена вся переписка, факты, привычки и расписания. Вернуть будет нельзя.\n\nТы уверен?',
+      '⚠️ *Это необратимо*\n\nБудет удалена вся переписка и факты, которые я запомнила. Привычки, задачи и расписание останутся.\n\nТы уверен?',
       { parse_mode: 'Markdown', reply_markup: kb },
     );
   });
@@ -319,8 +319,13 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
   botInstance.callbackQuery('cmd:gcal_reset_confirm', async (ctx) => {
     if (!ctx.dbUser) return;
-    await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: null });
-    await ctx.editMessageText('✅ Google Calendar отключён. Используй /gcal чтобы подключить снова.');
+    try {
+      await usersRepo.update(ctx.dbUser.id, { googleRefreshToken: null });
+      await ctx.editMessageText('✅ Google Calendar отключён. Используй /gcal чтобы подключить снова.');
+    } catch (err) {
+      log.error({ err, userId: ctx.dbUser.id }, 'gcal_reset failed');
+      await ctx.editMessageText('❌ Не удалось отключить Calendar. Попробуй позже.');
+    }
     await ctx.answerCallbackQuery();
   });
 
