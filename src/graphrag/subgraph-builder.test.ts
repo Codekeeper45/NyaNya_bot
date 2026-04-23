@@ -53,9 +53,11 @@ describe('buildFloatingSubgraph', () => {
 
     expect(expandQuery).toHaveBeenCalledWith(1, 'расскажи обо мне', []);
     expect(embedText).toHaveBeenCalledWith('расскажи обо мне Emir');
-    expect(result).toContain('Emir: Developer');
-    expect(result).toContain('Almaty: City');
-    expect(result).toContain('Emir → живёт в → Almaty');
+    expect(result.context).toContain('Emir: Developer');
+    expect(result.context).toContain('Almaty: City');
+    expect(result.context).toContain('Emir → живёт в → Almaty');
+    expect(result.entityIds).toContain('e1');
+    expect(result.entityIds).toContain('e2');
   });
 
   it('returns empty string when no entities found', async () => {
@@ -67,7 +69,8 @@ describe('buildFloatingSubgraph', () => {
 
     const result = await buildFloatingSubgraph(1, 'unknown', [], 999);
 
-    expect(result).toBe('');
+    expect(result.context).toBe('');
+    expect(result.entityIds).toEqual([]);
   });
 
   it('respects context budget of 1500 chars', async () => {
@@ -87,6 +90,6 @@ describe('buildFloatingSubgraph', () => {
 
     const result = await buildFloatingSubgraph(1, 'query', [], 999);
 
-    expect(result.length).toBeLessThanOrEqual(1500);
+    expect(result.context.length).toBeLessThanOrEqual(1500);
   });
 });

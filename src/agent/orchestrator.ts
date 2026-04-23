@@ -137,23 +137,40 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     let userMessageText = input.userMessage;
 
     // Auto-augment user query with floating subgraph context
+    let usedEntityIds: string[] = [];
     if (shouldRetrieveContext(input.userMessage)) {
       try {
         const { buildFloatingSubgraph } = await import('../graphrag/subgraph-builder.js');
-        const graphContext = await buildFloatingSubgraph(
+        const { context, entityIds } = await buildFloatingSubgraph(
           input.userId,
           input.userMessage,
           recentMessages,
           userMessageRecord.id,
         );
-        if (graphContext && graphContext.trim().length > 0) {
-          userMessageText = `[Релевантный контекст из памяти:\n${graphContext}\n]\n\n${input.userMessage}`;
+        usedEntityIds = entityIds;
+        if (context && context.trim().length > 0) {
+          userMessageText = `[Релевантный контекст из памяти:\n${context}\n]\n\n${input.userMessage}`;
         }
       } catch (err) {
         log.warn({ userId: input.userId, err }, 'Floating subgraph build failed');
       }
     } else {
       log.debug({ userId: input.userId, query: input.userMessage }, 'Skipping GraphRAG retrieval — trivial message');
+    }
+
+    // Record entity usage for cooldown tracking
+    if (usedEntityIds.length > 0 && userMessageRecord) {
+      try {
+        const { graphEntityUsagesRepo } = await import('../db/repos/graph_entity_usages.js');
+        const { graphEntitiesRepo } = await import('../db/repos/graph_entities.js');
+        for (const entityId of usedEntityIds.slice(0, 10)) {
+          await graphEntityUsagesRepo.recordUsage(input.userId, entityId, userMessageRecord.id);
+          await graphEntitiesRepo.updateUsage(entityId, 0); // update last_used_at only
+        }
+        log.debug({ userId: input.userId, count: usedEntityIds.length }, 'Recorded entity usage');
+      } catch (err) {
+        log.warn({ userId: input.userId, err }, 'Failed to record entity usage');
+      }
     }
 
     const userContent: UserContentPart[] = [{ type: 'text', text: userMessageText }];

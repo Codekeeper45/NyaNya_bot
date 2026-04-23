@@ -8,12 +8,17 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('graphrag:subgraph');
 const CONTEXT_BUDGET = 1500; // chars
 
+export interface SubgraphResult {
+  context: string;
+  entityIds: string[];
+}
+
 export async function buildFloatingSubgraph(
   userId: number,
   query: string,
   recentMessages: unknown[],
   _currentMessageId: number,
-): Promise<string> {
+): Promise<SubgraphResult> {
   // 1. Query Expansion
   const expandedQuery = await expandQuery(userId, query, recentMessages);
 
@@ -36,7 +41,7 @@ export async function buildFloatingSubgraph(
 
   if (activeIds.length === 0) {
     log.debug({ userId }, 'No active entities for subgraph');
-    return '';
+    return { context: '', entityIds: [] };
   }
 
   // 5. Graph traversal (1-2 hops)
@@ -69,7 +74,11 @@ export async function buildFloatingSubgraph(
   subgraphEntities.sort((a, b) => b.finalScore - a.finalScore);
 
   // 10. Format with budget
-  return formatSubgraphContext(subgraphEntities, neighbors, CONTEXT_BUDGET);
+  const context = formatSubgraphContext(subgraphEntities, neighbors, CONTEXT_BUDGET);
+
+  // Return both context and entity IDs for usage tracking
+  const usedEntityIds = subgraphEntities.map(e => e.id);
+  return { context, entityIds: usedEntityIds };
 }
 
 function formatSubgraphContext(
