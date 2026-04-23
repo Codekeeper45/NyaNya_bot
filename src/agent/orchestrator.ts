@@ -56,6 +56,27 @@ function shouldRetrieveContext(query: string): boolean {
   return true;
 }
 
+/**
+ * Detect broad "about me" queries where semantic search often fails.
+ * These should fallback to retrieveAll() (dump all facts).
+ */
+function isBroadAboutMeQuery(query: string): boolean {
+  const q = query.toLowerCase();
+  const patterns = [
+    /расскажи .*обо мне/,
+    /кто я/,
+    /что ты знаешь обо мне/,
+    /что ты помнишь обо мне/,
+    /что ты знаешь про меня/,
+    /вс[её] о (пользователе|мне|себе)/,
+    /моя (жизнь|история|биография)/,
+    /tell me about myself/,
+    /who am i/,
+    /what do you know about me/,
+  ];
+  return patterns.some(p => p.test(q));
+}
+
 export interface OrchestratorInput {
   userId: number;
   telegramUserId: number;
@@ -125,10 +146,18 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   if (input.userMessage) {
     let userMessageText = input.userMessage;
 
-    // Auto-augment user query with GraphRAG context (if highly relevant — threshold filter in retrieval.ts)
+    // Auto-augment user query with GraphRAG context
     if (shouldRetrieveContext(input.userMessage)) {
       try {
-        const graphContext = await graphRag.retrieve(input.userId, input.userMessage);
+        let graphContext: string;
+        if (isBroadAboutMeQuery(input.userMessage)) {
+          // Broad queries: dump all facts (semantic search fails on "tell me about me")
+          log.debug({ userId: input.userId, query: input.userMessage }, 'Broad about-me query detected, using retrieveAll');
+          graphContext = await graphRag.retrieveAll(input.userId);
+        } else {
+          // Normal queries: semantic search for specific entities
+          graphContext = await graphRag.retrieve(input.userId, input.userMessage);
+        }
         if (graphContext && graphContext.trim().length > 0) {
           userMessageText = `[Релевантный контекст из памяти:\n${graphContext}\n]\n\n${input.userMessage}`;
         }
