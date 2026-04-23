@@ -67,4 +67,12 @@ export const graphEntitiesRepo = {
     await db().delete(graphEntities).where(eq(graphEntities.userId, userId));
     log.info({ userId }, 'Deleted all entities for user');
   },
+
+  async findAllForUser(userId: number) {
+    return db()
+      .select()
+      .from(graphEntities)
+      .where(eq(graphEntities.userId, userId))
+      .orderBy(graphEntities.createdAt);
+  },
 };

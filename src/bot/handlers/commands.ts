@@ -12,6 +12,7 @@ import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCo
 const log = createChildLogger('commands');
 
 const pendingActions = new Set<number>();
+const lastInlineMessages = new Map<number, number>();
 
 function isPending(userId: number): boolean {
   return pendingActions.has(userId);
@@ -22,6 +23,24 @@ function markPending(userId: number): void {
 }
 function clearPending(userId: number): void {
   pendingActions.delete(userId);
+}
+
+async function sendMenu(ctx: BotContext, text: string, kb: InlineKeyboard): Promise<void> {
+  const userId = ctx.dbUser?.id;
+  if (userId) {
+    const oldMsgId = lastInlineMessages.get(userId);
+    if (oldMsgId) {
+      try {
+        await ctx.api.editMessageReplyMarkup(ctx.chat!.id, oldMsgId, { reply_markup: undefined });
+      } catch {
+        // ignore if message is too old or already cleared
+      }
+    }
+  }
+  const msg = await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
+  if (userId && msg.message_id) {
+    lastInlineMessages.set(userId, msg.message_id);
+  }
 }
 
 export function registerCommands(botInstance: Bot<BotContext>): void {
@@ -108,9 +127,10 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       .text('🗑 Да, стереть всё', 'cmd:reset_confirm')
       .row()
       .text('❌ Отмена', 'cmd:reset_cancel');
-    await ctx.reply(
+    await sendMenu(
+      ctx,
       '⚠️ *Это необратимо*\n\nБудет удалена вся переписка и факты, которые я запомнила. Привычки, задачи и расписание останутся.\n\nТы уверен?',
-      { parse_mode: 'Markdown', reply_markup: kb },
+      kb,
     );
   });
 
@@ -126,9 +146,10 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       .text('✅ Да, пересоздать', 'cmd:reschedule_confirm')
       .row()
       .text('❌ Отмена', 'cmd:reschedule_cancel');
-    await ctx.reply(
+    await sendMenu(
+      ctx,
       '⏰ *Пересоздание расписания*\n\nВсе текущие напоминания будут удалены и созданы заново с актуальными настройками.\n\nПродолжить?',
-      { parse_mode: 'Markdown', reply_markup: kb },
+      kb,
     );
   });
 
@@ -169,9 +190,10 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       .text('🗑 Да, отключить', 'cmd:gcal_reset_confirm')
       .row()
       .text('❌ Отмена', 'cmd:gcal_reset_cancel');
-    await ctx.reply(
+    await sendMenu(
+      ctx,
       '📅 *Отключение Google Calendar*\n\nЯ перестану видеть твои события и напоминания из календаря.\n\nОтключить?',
-      { parse_mode: 'Markdown', reply_markup: kb },
+      kb,
     );
   });
 
@@ -214,15 +236,15 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     log.info({ userId: ctx.dbUser.id }, '/who command');
 
     try {
-      const context = await graphRag.retrieve(ctx.dbUser.id, 'что я знаю о пользователе');
-      log.info({ userId: ctx.dbUser.id, hasContext: !!context, contextLength: context?.length ?? 0 }, '/who retrieve result');
+      const context = await graphRag.retrieveAll(ctx.dbUser.id);
+      log.info({ userId: ctx.dbUser.id, hasContext: !!context, contextLength: context?.length ?? 0, entityCount: context?.split('\n').filter(l => l.startsWith('—')).length ?? 0 }, '/who retrieveAll result');
       if (!context || context.trim().length === 0) {
         await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мной побольше или запусти /index_memory! 🤗');
         return;
       }
       await ctx.reply(`Вот что я помню о тебе:\n\n${context}`);
     } catch (err) {
-      log.error({ err, userId: ctx.dbUser.id }, '/who retrieve failed');
+      log.error({ err, userId: ctx.dbUser.id }, '/who retrieveAll failed');
       await ctx.reply('Не удалось загрузить память. Попробуй позже.');
     }
   });
@@ -290,9 +312,10 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     const prefs = (ctx.dbUser.preferences ?? {}) as Record<string, unknown>;
     const current = typeof prefs.voice_name === 'string' ? prefs.voice_name : 'Leda';
     try {
-      await ctx.reply(
+      await sendMenu(
+        ctx,
         `🎙 Выбор голоса\n\nТекущий голос: *${current}*\n\nВыбери категорию:`,
-        { parse_mode: 'Markdown', reply_markup: vbCategoryKb() },
+        vbCategoryKb(),
       );
       log.info({ userId: ctx.dbUser.id }, '/voices reply sent');
     } catch (err) {

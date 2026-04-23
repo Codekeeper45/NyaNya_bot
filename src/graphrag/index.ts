@@ -32,6 +32,39 @@ export const graphRag = {
   },
 
   /**
+   * Retrieve ALL entities and relationships for a user.
+   * Used by /who — no semantic filtering, just dumps everything.
+   */
+  async retrieveAll(userId: number): Promise<string> {
+    try {
+      const entities = await graphEntitiesRepo.findAllForUser(userId);
+      const relationships = await graphRelationshipsRepo.getAllForUser(userId);
+
+      if (entities.length === 0 && relationships.length === 0) {
+        return '';
+      }
+
+      const lines: string[] = [];
+      if (entities.length > 0) {
+        lines.push('🧠 Сущности:');
+        for (const e of entities) {
+          lines.push(`— ${e.name}: ${e.description}`);
+        }
+      }
+      if (relationships.length > 0) {
+        lines.push('\n🔗 Связи:');
+        for (const r of relationships.slice(0, 20)) {
+          lines.push(`— ${r.sourceName} → ${r.description} → ${r.targetName}`);
+        }
+      }
+      return lines.join('\n');
+    } catch (err) {
+      log.error({ err, userId }, 'retrieveAll failed');
+      return '';
+    }
+  },
+
+  /**
    * Delete all graph data for a user.
    */
   async deleteAllForUser(userId: number): Promise<void> {

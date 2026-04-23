@@ -8,7 +8,7 @@ const log = createChildLogger('graphrag:retrieval');
 
 const SEED_ENTITIES_LIMIT = 5;
 const CHUNKS_LIMIT = 2;
-const MAX_ENTITY_DISTANCE = 0.15; // cosine distance; 0.15 ≈ similarity 0.85
+const MAX_ENTITY_DISTANCE = 0.35; // cosine distance; 0.35 ≈ similarity 0.65
 
 export async function retrieveContext(userId: number, query: string): Promise<string> {
   try {

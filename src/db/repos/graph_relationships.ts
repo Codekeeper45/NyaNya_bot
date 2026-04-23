@@ -76,4 +76,31 @@ export const graphRelationshipsRepo = {
   async deleteAllForUser(userId: number) {
     await db().delete(graphRelationships).where(eq(graphRelationships.userId, userId));
   },
+
+  async getAllForUser(userId: number) {
+    const rels = await db()
+      .select()
+      .from(graphRelationships)
+      .where(eq(graphRelationships.userId, userId))
+      .limit(50);
+
+    const allEntityIds = [...new Set([...rels.map(r => r.sourceId), ...rels.map(r => r.targetId)])];
+    if (allEntityIds.length === 0) return [];
+
+    const entities = await db()
+      .select({ id: graphEntities.id, name: graphEntities.name })
+      .from(graphEntities)
+      .where(inArray(graphEntities.id, allEntityIds));
+
+    const nameMap = new Map(entities.map(e => [e.id, e.name]));
+
+    return rels.map(r => ({
+      sourceId: r.sourceId,
+      sourceName: nameMap.get(r.sourceId) ?? 'Unknown',
+      targetId: r.targetId,
+      targetName: nameMap.get(r.targetId) ?? 'Unknown',
+      description: r.description,
+      weight: r.weight,
+    }));
+  },
 };
