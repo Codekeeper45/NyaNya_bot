@@ -12,14 +12,13 @@ function db() {
 }
 
 export const graphEntityMentionsRepo = {
-  async create(data: NewGraphEntityMention): Promise<string> {
+  async create(data: NewGraphEntityMention): Promise<string | null> {
     const result = await db()
       .insert(graphEntityMentions)
       .values(data)
+      .onConflictDoNothing()
       .returning({ id: graphEntityMentions.id });
-    const id = result[0]?.id;
-    if (!id) throw new Error('Failed to insert entity mention');
-    return id;
+    return result[0]?.id ?? null;
   },
 
   async findByEntityId(entityId: string) {
