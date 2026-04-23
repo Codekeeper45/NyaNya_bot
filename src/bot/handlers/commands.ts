@@ -3,14 +3,6 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
-import { habitsRepo } from '../../db/repos/habits.js';
-import { todosRepo } from '../../db/repos/todos.js';
-import { expensesRepo } from '../../db/repos/expenses.js';
-import { jobsRepo } from '../../db/repos/jobs.js';
-import { jobExecutionsRepo } from '../../db/repos/job_executions.js';
-import { lessonPlansRepo } from '../../db/repos/lesson_plans.js';
-import { repeatingJobsRepo } from '../../db/repos/repeating_jobs.js';
-import { jobSkipOnceRepo } from '../../db/repos/job_skip_once.js';
 import { graphIndexStateRepo } from '../../db/repos/graph_index_state.js';
 import { graphRag } from '../../graphrag/index.js';
 import { validateVoiceName } from '../../voice/tts.js';
@@ -263,36 +255,20 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     }
     markPending(ctx.dbUser.id);
 
-    await ctx.editMessageText('🗑 Стираю всё...');
+    await ctx.editMessageText('🗑 Стираю память...');
     try {
-      const userId = ctx.dbUser.id;
-
-      const repeatingJobs = await repeatingJobsRepo.deleteAllForUser(userId);
-      for (const job of repeatingJobs) {
-        try { await jobSkipOnceRepo.clear(job.schedulerId); } catch {}
-      }
-
       await Promise.all([
-        messagesRepo.deleteAllForUser(userId),
-        graphRag.deleteAllForUser(userId),
-        graphIndexStateRepo.deleteForUser(userId),
-        habitsRepo.deleteAllForUser(userId),
-        todosRepo.deleteAllForUser(userId),
-        expensesRepo.deleteAllForUser(userId),
-        jobsRepo.deleteAllForUser(userId),
-        jobExecutionsRepo.deleteAllForUser(userId),
-        lessonPlansRepo.deleteAllForUser(userId),
+        messagesRepo.deleteAllForUser(ctx.dbUser.id),
+        graphRag.deleteAllForUser(ctx.dbUser.id),
+        graphIndexStateRepo.deleteForUser(ctx.dbUser.id),
       ]);
 
-      await usersRepo.update(userId, {
-        preferences: {},
-        paused: false,
-      });
+      await usersRepo.update(ctx.dbUser.id, { preferences: {} });
 
-      await ctx.editMessageText('✅ Готово — я забыла всё что знала о тебе. Все данные удалены. Можем начать с чистого листа!');
+      await ctx.editMessageText('✅ Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
     } catch (err) {
       log.error({ err, userId: ctx.dbUser.id }, 'Reset failed');
-      await ctx.editMessageText('❌ Не удалось стереть данные полностью. Часть данных может остаться. Попробуй позже.');
+      await ctx.editMessageText('❌ Не удалось стереть память. Попробуй позже.');
     } finally {
       clearPending(ctx.dbUser.id);
     }
