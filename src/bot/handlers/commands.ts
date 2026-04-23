@@ -12,9 +12,37 @@ const pendingReset = new Set<number>();
 const log = createChildLogger('commands');
 
 export function registerCommands(botInstance: Bot<BotContext>): void {
+  const HELP_TEXT = `Привет! Я Опекун — твой AI-наставник и помощник 💛
+
+Вот что я умею:
+
+/start — начать общение или перезапустить онбординг
+/help — показать это сообщение
+
+🧠 Память
+/who — что я помню о тебе
+/index_memory — обновить мою память (индексация переписки)
+/reset — стереть всю память и начать с чистого листа
+
+⏰ Расписание и напоминания
+/pause — не писать первой (только отвечать)
+/resume — снова писать первой
+/reschedule — пересоздать все напоминания
+
+📅 Google Calendar
+/gcal — подключить Google Calendar
+/gcal_reset — отключить Google Calendar
+
+Просто пиши мне как другу — я запоминаю факты, напоминаю о делах, помогаю учиться и слежу за твоим прогрессом!`;
+
   botInstance.command('start', async (ctx) => {
     if (!ctx.dbUser) return;
     log.info({ userId: ctx.dbUser.id }, '/start command');
+
+    if (ctx.dbUser.onboardingComplete) {
+      await ctx.reply(HELP_TEXT);
+      return;
+    }
 
     // Launch onboarding via orchestrator
     try {
@@ -35,8 +63,13 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       });
     } catch (err) {
       log.error({ err }, 'Failed to launch onboarding');
-      await ctx.reply('Привет! Я Опекун 💛 Похоже, у меня небольшие технические шоколадки, но мы всё равно можем пообщаться!');
+      await ctx.reply(HELP_TEXT);
     }
+  });
+
+  botInstance.command('help', async (ctx) => {
+    if (!ctx.dbUser) return;
+    await ctx.reply(HELP_TEXT);
   });
 
   botInstance.command('pause', async (ctx) => {
