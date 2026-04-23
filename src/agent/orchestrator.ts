@@ -13,6 +13,9 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('orchestrator');
 
 const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
+
+// Track last injected context per user to avoid duplicate context in consecutive messages
+const lastContextMap = new Map<number, string>();
 const ORCHESTRATOR_TIMEOUT_MS = 600_000;
 const ORCHESTRATOR_TIMEOUT_TEXT = 'Извини, запрос получился слишком объёмным. Я сократила исследование и готова ответить точнее, если сузим тему.';
 
@@ -150,7 +153,16 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
         usedEntityIds = entityIds;
         log.info({ userId: input.userId, entityCount: entityIds.length, contextLen: context?.length ?? 0 }, 'Floating subgraph result');
         if (context && context.trim().length > 0) {
-          userMessageText = `[Релевантный контекст из памяти:\n${context}\n]\n\n${input.userMessage}`;
+          const lastContext = lastContextMap.get(input.userId);
+          if (lastContext === context) {
+            log.info({ userId: input.userId }, 'Context identical to previous message — skipping injection');
+          } else {
+            lastContextMap.set(input.userId, context);
+            userMessageText = `[Релевантный контекст из памяти:\n${context}\n]\n\n${input.userMessage}`;
+          }
+        } else {
+          // Clear last context if nothing found this time
+          lastContextMap.delete(input.userId);
         }
       } catch (err) {
         log.warn({ userId: input.userId, err }, 'Floating subgraph build failed');

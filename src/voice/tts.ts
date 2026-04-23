@@ -11,11 +11,16 @@ const DEFAULT_VOICE = 'Leda';
 const PCM_SAMPLE_RATE = 24_000;
 const PCM_CHANNELS = 1;
 
-// Build list of all API keys (primary + comma-separated extras)
+// Build list of all API keys (supports comma-separated in primary or separate env)
 function getApiKeys(): string[] {
   const keys: string[] = [];
-  if (config.googleGenaiApiKey) keys.push(config.googleGenaiApiKey);
-  if (config.googleGenaiApiKeys?.length) keys.push(...config.googleGenaiApiKeys);
+  // Primary key may contain multiple comma-separated keys
+  if (config.googleGenaiApiKey) {
+    keys.push(...config.googleGenaiApiKey.split(',').map(k => k.trim()).filter(k => k.length > 0));
+  }
+  if (config.googleGenaiApiKeys?.length) {
+    keys.push(...config.googleGenaiApiKeys);
+  }
   return [...new Set(keys)]; // dedup
 }
 

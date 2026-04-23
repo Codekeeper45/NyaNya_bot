@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { createChildLogger } from '../lib/logger.js';
+import { embeddingCache } from './cache.js';
 
 const log = createChildLogger('embeddings');
 
@@ -11,6 +12,23 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     throw new Error('OpenRouter API key not configured');
   }
   if (texts.length === 0) return [];
+
+  // Check cache first
+  const results: (number[] | undefined)[] = texts.map(t => embeddingCache.get(t));
+  const missingIndices: number[] = [];
+  const missingTexts: string[] = [];
+
+  for (let i = 0; i < texts.length; i++) {
+    if (!results[i]) {
+      missingIndices.push(i);
+      missingTexts.push(texts[i]);
+    }
+  }
+
+  if (missingTexts.length === 0) {
+    log.debug({ count: texts.length, cached: true }, 'All embeddings from cache');
+    return results as number[][];
+  }
 
   try {
     const response = await fetch(API_URL, {
@@ -36,9 +54,16 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       data: Array<{ embedding: number[] }>;
     };
 
-    const embeddings = data.data.map(d => d.embedding);
-    log.debug({ count: embeddings.length, dims: embeddings[0]?.length }, 'Embeddings generated');
-    return embeddings;
+    const newEmbeddings = data.data.map(d => d.embedding);
+    for (let i = 0; i < missingIndices.length; i++) {
+      const idx = missingIndices[i];
+      const emb = newEmbeddings[i];
+      embeddingCache.set(texts[idx], emb);
+      results[idx] = emb;
+    }
+
+    log.debug({ count: texts.length, cached: texts.length - missingTexts.length, generated: missingTexts.length }, 'Embeddings ready');
+    return results as number[][];
   } catch (err) {
     log.error({ err, count: texts.length }, 'Failed to generate embeddings');
     throw err;
@@ -46,6 +71,11 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 }
 
 export async function embedText(text: string): Promise<number[]> {
+  const cached = embeddingCache.get(text);
+  if (cached) {
+    log.debug({ textLen: text.length }, 'Embedding from cache');
+    return cached;
+  }
   const results = await embedTexts([text]);
   return results[0];
 }

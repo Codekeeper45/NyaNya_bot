@@ -3,6 +3,7 @@ import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphEntityUsagesRepo } from '../db/repos/graph_entity_usages.js';
 import { expandQuery } from './query-expansion.js';
 import { embedText } from './embeddings.js';
+import { contextCache, isSimilarToRecentQuery, recordLastQuery } from './cache.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('graphrag:subgraph');
@@ -19,11 +20,27 @@ export async function buildFloatingSubgraph(
   recentMessages: unknown[],
   _currentMessageId: number,
 ): Promise<SubgraphResult> {
+  // 0. Check context cache first (fast path)
+  const cacheKey = String(userId);
+  const cached = contextCache.get(cacheKey);
+  if (cached) {
+    log.info({ userId, contextLen: cached.context.length, entityCount: cached.entityIds.length }, 'Subgraph cache hit');
+    return cached;
+  }
+
   // 1. Query Expansion
   const expandedQuery = await expandQuery(userId, query, recentMessages);
 
   // 2. Get seed entities from expanded query
   const queryEmbedding = await embedText(expandedQuery);
+
+  // 2a. Dedup: if query is very similar to recent one, reuse cached context
+  if (isSimilarToRecentQuery(userId, queryEmbedding)) {
+    log.info({ userId }, 'Query similar to recent — skipping subgraph rebuild');
+    return { context: '', entityIds: [] };
+  }
+  recordLastQuery(userId, query, queryEmbedding);
+
   const seedEntities = await graphEntitiesRepo.findWithScoring(
     userId,
     queryEmbedding,
@@ -86,7 +103,12 @@ export async function buildFloatingSubgraph(
 
   // Return both context and entity IDs for usage tracking
   const usedEntityIds = subgraphEntities.map(e => e.id);
-  return { context, entityIds: usedEntityIds };
+  const result: SubgraphResult = { context, entityIds: usedEntityIds };
+
+  // Cache result for this user
+  contextCache.set(cacheKey, result);
+
+  return result;
 }
 
 function formatSubgraphContext(

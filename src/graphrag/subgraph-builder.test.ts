@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { contextCache, lastQueryCache, embeddingCache } from './cache.js';
 
 vi.mock('/src/db/repos/graph_entities.js', () => ({
   graphEntitiesRepo: {
@@ -34,6 +35,11 @@ import { expandQuery } from './query-expansion.js';
 import { embedText } from './embeddings.js';
 
 describe('buildFloatingSubgraph', () => {
+  beforeEach(() => {
+    contextCache.clear();
+    lastQueryCache.clear();
+    embeddingCache.clear();
+  });
   it('returns formatted context with entities and relationships', async () => {
     (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('расскажи обо мне Emir');
     (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);

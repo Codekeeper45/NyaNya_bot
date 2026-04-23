@@ -20,7 +20,7 @@ export function registerVoiceHandler(botInstance: Bot<BotContext>): void {
     log.debug({ userId: ctx.dbUser.id }, 'Incoming voice message');
 
     try {
-      const text = await withTyping(ctx.api, ctx.chat.id, () => transcribeVoice(ctx.message.voice.file_id));
+      const text =       await withTyping(ctx.api, ctx.chat.id, () => transcribeVoice(ctx.message.voice.file_id), 'upload_voice');
       log.debug({ text: text.slice(0, 50) }, 'Voice transcribed');
 
       await withTyping(ctx.api, ctx.chat.id, () => runOrchestrator({

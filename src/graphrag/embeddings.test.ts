@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { embeddingCache } from './cache.js';
 
 vi.mock('../config.js', () => ({
   config: { openrouterApiKey: 'test-key' },
@@ -7,6 +8,9 @@ vi.mock('../config.js', () => ({
 import { embedText, embedTexts } from './embeddings.js';
 
 describe('embeddings', () => {
+  beforeEach(() => {
+    embeddingCache.clear();
+  });
   it('embeds single text', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

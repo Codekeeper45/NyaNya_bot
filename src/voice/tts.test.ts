@@ -86,7 +86,7 @@ afterEach(() => {
 describe('tts', () => {
   it('throws when Gemini API key is missing', async () => {
     const { mod } = await loadTtsModule({ apiKey: '' });
-    await expect(mod.synthesizeSpeech('Привет')).rejects.toThrow('Gemini API key not configured');
+    await expect(mod.synthesizeSpeech('Привет')).rejects.toThrow('No Gemini API keys configured');
   });
 
   it('returns OGG/Opus buffer when Gemini and conversion succeed', async () => {

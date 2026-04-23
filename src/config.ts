@@ -1,5 +1,10 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { resolve } from 'path';
 import { z } from 'zod';
+
+// Try multiple .env locations (Pterodactyl runs from /home/container, files are at /)
+dotenvConfig(); // default: process.cwd()
+dotenvConfig({ path: resolve(process.cwd(), '..', '.env') }); // parent dir
 
 const configSchema = z.object({
   telegramBotToken: z.string().min(1),
