@@ -11,9 +11,9 @@ const log = createChildLogger('handler:message');
 
 export function registerMessageHandler(botInstance: Bot<BotContext>): void {
   // Handle text messages
-  botInstance.on('message:text', async (ctx) => {
-    if (!ctx.dbUser) return;
-    if (ctx.message.text.startsWith('/')) return;
+  botInstance.on('message:text', async (ctx, next) => {
+    if (!ctx.dbUser) return next();
+    if (ctx.message.text.startsWith('/')) return next();
 
     log.debug({ userId: ctx.dbUser.id, text: ctx.message.text.slice(0, 50) }, 'Incoming text message');
 
