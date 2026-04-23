@@ -1,4 +1,17 @@
-import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer, bigint, unique, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer, bigint, unique, index, uuid, customType } from 'drizzle-orm/pg-core';
+
+// Custom type for pgvector (1536 dimensions for text-embedding-3-small)
+export const vector1536 = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return 'vector(1536)';
+  },
+  toDriver(value: number[]): string {
+    return JSON.stringify(value);
+  },
+  fromDriver(value: string): number[] {
+    return JSON.parse(value);
+  },
+});
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -147,6 +160,56 @@ export const jobExecutions = pgTable('job_executions', {
   index('idx_job_exec_scheduler_id').on(t.schedulerId),
 ]);
 
+export const graphChunks = pgTable('graph_chunks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  content: text('content').notNull(),
+  embedding: vector1536('embedding').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('idx_graph_chunks_user').on(t.userId),
+]);
+
+export const graphEntities = pgTable('graph_entities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  embedding: vector1536('embedding').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('idx_graph_entities_user').on(t.userId),
+  index('idx_graph_entities_name').on(t.userId, t.name),
+]);
+
+export const graphRelationships = pgTable('graph_relationships', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  sourceId: uuid('source_id').references(() => graphEntities.id).notNull(),
+  targetId: uuid('target_id').references(() => graphEntities.id).notNull(),
+  description: text('description').notNull(),
+  weight: integer('weight').notNull().default(1),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('idx_graph_rel_user_source').on(t.userId, t.sourceId),
+  index('idx_graph_rel_user_target').on(t.userId, t.targetId),
+]);
+
+export const graphEntityMentions = pgTable('graph_entity_mentions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityId: uuid('entity_id').references(() => graphEntities.id, { onDelete: 'cascade' }).notNull(),
+  chunkId: uuid('chunk_id').references(() => graphChunks.id, { onDelete: 'cascade' }).notNull(),
+}, (t) => [
+  unique('entity_chunk_unique').on(t.entityId, t.chunkId),
+]);
+
+export const graphIndexState = pgTable('graph_index_state', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull().unique(),
+  lastIndexedMessageId: integer('last_indexed_message_id').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -162,3 +225,12 @@ export type JobSkipOnce = typeof jobSkipOnce.$inferSelect;
 export type NewJobSkipOnce = typeof jobSkipOnce.$inferInsert;
 export type JobExecution = typeof jobExecutions.$inferSelect;
 export type NewJobExecution = typeof jobExecutions.$inferInsert;
+export type GraphChunk = typeof graphChunks.$inferSelect;
+export type NewGraphChunk = typeof graphChunks.$inferInsert;
+export type GraphEntity = typeof graphEntities.$inferSelect;
+export type NewGraphEntity = typeof graphEntities.$inferInsert;
+export type GraphRelationship = typeof graphRelationships.$inferSelect;
+export type NewGraphRelationship = typeof graphRelationships.$inferInsert;
+export type GraphEntityMention = typeof graphEntityMentions.$inferSelect;
+export type NewGraphEntityMention = typeof graphEntityMentions.$inferInsert;
+export type GraphIndexState = typeof graphIndexState.$inferSelect;

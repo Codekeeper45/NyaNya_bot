@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { buildSystemPrompt } from './prompts/system.js';
 import { buildProactivePrompt } from './prompts/proactive.js';
 import { mem0 } from '../memory/mem0.js';
+import { graphRag } from '../graphrag/index.js';
 import { messagesRepo } from '../db/repos/messages.js';
 import { listRepeatingJobs } from '../scheduler/jobs.js';
 import { allTools } from './tools/index.js';
@@ -84,6 +85,14 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     content: m.content,
   }));
 
+  // 2.5. GraphRAG retrieval — semantic memory from knowledge graph
+  let graphContext = '';
+  try {
+    graphContext = await graphRag.retrieve(input.userId, query);
+  } catch (err) {
+    log.warn({ userId: input.userId, err }, 'GraphRAG retrieval failed');
+  }
+
   // 3. Build system prompt
   const now = new Date();
   const currentTime = now.toLocaleString('ru-RU', { timeZone: input.userTimezone });
@@ -99,6 +108,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     userTimezone: input.userTimezone,
     currentTime,
     memories,
+    graphContext,
     wakeTime: input.wakeTime,
     sleepTime: input.sleepTime,
     weekendWakeTime: input.weekendWakeTime,

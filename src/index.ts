@@ -12,6 +12,7 @@ import { restoreSchedules, syncSchedules } from './scheduler/proactive.js';
 import { runDailyPatternDetection } from './scheduler/patterns.js';
 import { jobExecutionsRepo } from './db/repos/job_executions.js';
 import { redisConnection, workerRedisConnection, opekuQueue } from './scheduler/queue.js';
+import { graphRag } from './graphrag/index.js';
 import { startCallServer } from './call/server.js';
 import { isTwilioConfigured } from './call/initiate.js';
 
@@ -48,6 +49,15 @@ setTimeout(() => {
     runDailyPatternDetection().catch(err => log.error({ err }, 'Pattern detection failed'));
   }, PATTERN_DETECTION_INTERVAL_MS);
 }, 60 * 60 * 1000); // First run 1 hour after start
+
+// GraphRAG batch indexing every 6 hours
+const GRAPHRAG_INDEX_INTERVAL_MS = 6 * 60 * 60 * 1000;
+setTimeout(() => {
+  graphRag.indexAll().catch(err => log.error({ err }, 'GraphRAG indexing failed'));
+  setInterval(() => {
+    graphRag.indexAll().catch(err => log.error({ err }, 'GraphRAG indexing failed'));
+  }, GRAPHRAG_INDEX_INTERVAL_MS);
+}, 30_000); // First run 30s after start
 
 // Cleanup old job execution logs (keep 90 days)
 setInterval(() => {

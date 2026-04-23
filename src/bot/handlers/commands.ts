@@ -3,6 +3,7 @@ import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
 import { mem0 } from '../../memory/mem0.js';
+import { graphRag } from '../../graphrag/index.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
 
@@ -112,6 +113,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       await Promise.all([
         mem0.deleteAll(uid),
         messagesRepo.deleteAllForUser(ctx.dbUser.id),
+        graphRag.deleteAllForUser(ctx.dbUser.id),
       ]);
       await ctx.reply('🗑 Готово — я забыла всё что знала о тебе. Можем начать с чистого листа!');
       return;
@@ -153,6 +155,18 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     } catch (err) {
       log.error({ err, userId: ctx.dbUser.id }, 'Failed to reschedule');
       await ctx.reply('❌ Не удалось обновить расписание. Попробуй позже или напиши разработчику.');
+    }
+  });
+
+  botInstance.command('index_memory', async (ctx) => {
+    if (!ctx.dbUser) return;
+    await ctx.reply('🔍 Индексирую нашу переписку... Это может занять минуту.');
+    try {
+      await graphRag.indexUser(ctx.dbUser.id);
+      await ctx.reply('✅ Готово! Память обновлена.');
+    } catch (err) {
+      log.error({ err, userId: ctx.dbUser.id }, 'Manual indexing failed');
+      await ctx.reply('❌ Не удалось проиндексировать. Попробуй позже.');
     }
   });
 

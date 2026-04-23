@@ -4,6 +4,7 @@ interface SystemPromptParams {
   userTimezone: string;
   currentTime: string;
   memories: string[];
+  graphContext?: string;
   wakeTime?: string;
   sleepTime?: string;
   weekendWakeTime?: string;
@@ -17,6 +18,10 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   const memoriesBlock = params.memories.length > 0
     ? params.memories.map(m => `- ${m}`).join('\n')
     : '(пока ничего не помню)';
+
+  const graphBlock = params.graphContext && params.graphContext.trim().length > 0
+    ? params.graphContext
+    : null;
 
   const prefs = params.preferences ?? {};
   const prefsLines: string[] = [];
@@ -62,6 +67,10 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
 # Память о ${params.userName}
 ${memoriesBlock}
+${graphBlock ? `
+# Знание-граф (структурированная память)
+${graphBlock}
+` : ''}
 
 # Профиль
 - Часовой пояс: ${params.userTimezone}
