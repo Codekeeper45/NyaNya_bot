@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { InputFile } from 'grammy';
 import { bot } from '../../bot/bot.js';
 import { messagesRepo } from '../../db/repos/messages.js';
-import { synthesizeSpeech } from '../../voice/tts.js';
+import { synthesizeSpeech, validateVoiceName } from '../../voice/tts.js';
+import { usersRepo } from '../../db/repos/users.js';
 import { createChildLogger } from '../../lib/logger.js';
 
 const log = createChildLogger('tool:messaging');
@@ -67,16 +68,26 @@ export function messagingTools(chatId: number, userId: number) {
     }),
 
     message_send_voice: tool({
-      description: 'Отправить голосовое сообщение. Для эмоциональных, коротких сообщений. Интонацией управляют аудио-теги: [whispers], [shouting], [excited], [serious], [sighs], [laughs], [curious], [panicked], [crying], [tired], [amazed], [sarcastic], [gasp], [giggles], [mischievously], [trembling], [short pause], [long pause] — и любые свои.',
+      description: 'Отправить голосовое сообщение. Для эмоциональных, коротких сообщений. Интонацией управляют аудио-теги. Если пользователь не выбрал постоянный голос — ты можешь выбрать подходящий голос под эмоцию сообщения (см. список в system prompt).',
       inputSchema: z.object({
         text: z.string().describe('Текст для озвучки. Теги управляют интонацией: [excited], [whispers], [serious], [sighs], [shouting] и т.д. Пример: "[sighs] Ладно, [excited] пошли!"'),
+        voice: z.string().optional().describe('Голос для озвучки. Например: Leda (молодой, игривый), Fenrir (возбудимый), Vindemiatrix (нежный), Algieba (спокойный). Если не указан — используется голос пользователя по умолчанию.'),
       }),
-      execute: async ({ text }) => {
+      execute: async ({ text, voice }) => {
         if (sent) return { sent: false, reason: 'already_sent' };
 
-        log.debug({ chatId, textLen: text.length }, 'Sending voice');
+        // Resolve voice: tool param > user preference > default
+        let resolvedVoice = voice;
+        if (!resolvedVoice) {
+          const user = await usersRepo.findById(userId);
+          const prefs = (user?.preferences ?? {}) as Record<string, unknown>;
+          resolvedVoice = typeof prefs.voice_name === 'string' ? prefs.voice_name : undefined;
+        }
+        const finalVoice = validateVoiceName(resolvedVoice ?? '');
+
+        log.debug({ chatId, textLen: text.length, voice: finalVoice }, 'Sending voice');
         try {
-          const audioBuffer = await synthesizeSpeech(text);
+          const audioBuffer = await synthesizeSpeech(text, finalVoice);
           await bot.api.sendVoice(chatId, new InputFile(audioBuffer, 'voice.opus'));
           sent = true;
           await messagesRepo.create({

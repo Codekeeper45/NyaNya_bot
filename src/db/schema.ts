@@ -31,6 +31,7 @@ export const users = pgTable('users', {
   googleRefreshToken: text('google_refresh_token'),
   preferences: jsonb('preferences').$type<{
     voice_default?: boolean;
+    voice_name?: string;
     dietary?: string[];
     interests?: string[];
     study_subjects?: string[];

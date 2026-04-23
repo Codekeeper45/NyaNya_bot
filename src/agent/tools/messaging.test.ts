@@ -6,8 +6,12 @@ vi.mock('../../bot/bot.js', () => ({
 vi.mock('../../db/repos/messages.js', () => ({
   messagesRepo: { create: vi.fn() },
 }));
+vi.mock('../../db/repos/users.js', () => ({
+  usersRepo: { findById: vi.fn() },
+}));
 vi.mock('../../voice/tts.js', () => ({
   synthesizeSpeech: vi.fn(),
+  validateVoiceName: vi.fn((name: string) => name || 'Leda'),
 }));
 
 import { bot } from '../../bot/bot.js';
@@ -95,8 +99,19 @@ describe('message_send_voice', () => {
     const { tools } = messagingTools(100, 1);
     const result = await tools.message_send_voice.execute({ text: 'Привет голос' }, {} as never);
 
-    expect(mockSynthesize).toHaveBeenCalledWith('Привет голос');
+    expect(mockSynthesize).toHaveBeenCalledWith('Привет голос', 'Leda');
     expect(mockSendVoice).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ sent: true, mode: 'voice' });
+  });
+
+  it('uses requested voice when provided', async () => {
+    const audioBuffer = Buffer.from('fake-audio');
+    mockSynthesize.mockResolvedValue(audioBuffer);
+
+    const { tools } = messagingTools(100, 1);
+    const result = await tools.message_send_voice.execute({ text: 'Привет', voice: 'Fenrir' }, {} as never);
+
+    expect(mockSynthesize).toHaveBeenCalledWith('Привет', 'Fenrir');
     expect(result).toEqual({ sent: true, mode: 'voice' });
   });
 

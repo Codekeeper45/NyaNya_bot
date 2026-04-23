@@ -34,6 +34,7 @@ export function profileTools(userId: number) {
         sleepTime: z.string().regex(/^\d{2}:\d{2}$/).optional().describe('Время сна в формате HH:mm (например 23:00)'),
         preferences: z.object({
           voice_default: z.boolean().optional().describe('Отвечать голосом по умолчанию'),
+          voice_name: z.string().optional().describe('Постоянный голос для озвучки (например Leda, Fenrir, Vindemiatrix)'),
           dietary: z.array(z.string()).optional().describe('Диетические ограничения/предпочтения'),
           interests: z.array(z.string()).optional().describe('Интересы и хобби'),
           study_subjects: z.array(z.string()).optional().describe('Темы для обучения'),
@@ -65,6 +66,7 @@ export function profileTools(userId: number) {
 - Пользователь называет интересы, диету, темы → обновляй соответствующие поля`,
       inputSchema: z.object({
         voice_default: z.boolean().optional().describe('Отвечать голосом по умолчанию'),
+        voice_name: z.string().optional().describe('Постоянный голос для озвучки (например Leda, Fenrir, Vindemiatrix)'),
         message_length: z.enum(['short', 'normal', 'detailed']).optional().describe('Длина ответов: short=кратко, normal=обычно, detailed=подробно'),
         followup_max_attempts: z.number().min(0).max(3).optional().describe('Глобальный лимит follow-up попыток (0–3)'),
         followup_by_kind: z.record(z.string(), z.number().min(0).max(3)).optional().describe('Лимиты follow-up по типу действия, например {"morning_greeting":1,"daily_planning":2}'),

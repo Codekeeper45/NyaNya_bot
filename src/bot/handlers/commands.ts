@@ -3,6 +3,7 @@ import type { BotContext } from '../bot.js';
 import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
 import { graphRag } from '../../graphrag/index.js';
+import { getVoiceProfiles, validateVoiceName } from '../../voice/tts.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
 
@@ -23,6 +24,11 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 /who — что я помню о тебе
 /index_memory — обновить мою память (индексация переписки)
 /reset — стереть всю память и начать с чистого листа
+
+🎙 Голос
+/voices — список всех голосов
+/voice — мой текущий голос
+/voice <имя> — сменить голос (например /voice Fenrir)
 
 ⏰ Расписание и напоминания
 /pause — не писать первой (только отвечать)
@@ -210,5 +216,38 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     }
 
     await ctx.reply(`Вот что я помню о тебе:\n\n${context}`);
+  });
+
+  botInstance.command('voices', async (ctx) => {
+    if (!ctx.dbUser) return;
+    const profiles = getVoiceProfiles();
+    const lines = profiles.map(v => `• ${v.name} — ${v.tone}, ${v.pitch} (${v.personality})`);
+    await ctx.reply(`🎙 Доступные голоса:\n\n${lines.join('\n')}\n\nЧтобы выбрать голос, напиши: /voice <имя>\nНапример: /voice Fenrir`);
+  });
+
+  botInstance.command('voice', async (ctx) => {
+    if (!ctx.dbUser) return;
+    const args = ctx.message.text.split(' ').slice(1);
+
+    // No args — show current voice
+    if (args.length === 0) {
+      const prefs = (ctx.dbUser.preferences ?? {}) as Record<string, unknown>;
+      const current = typeof prefs.voice_name === 'string' ? prefs.voice_name : 'Leda (по умолчанию)';
+      await ctx.reply(`🎙 Мой текущий голос: ${current}\n\nЧтобы сменить: /voice <имя>\nСписок всех голосов: /voices`);
+      return;
+    }
+
+    // Set new voice
+    const requested = args[0];
+    const valid = validateVoiceName(requested);
+    if (valid.toLowerCase() !== requested.toLowerCase()) {
+      await ctx.reply(`❌ Голос "${requested}" не найден. Посмотри список: /voices`);
+      return;
+    }
+
+    await usersRepo.update(ctx.dbUser.id, {
+      preferences: { ...(ctx.dbUser.preferences as Record<string, unknown> ?? {}), voice_name: valid },
+    });
+    await ctx.reply(`✅ Голос изменён на ${valid}!`);
   });
 }

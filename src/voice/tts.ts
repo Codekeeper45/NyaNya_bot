@@ -7,7 +7,7 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('tts');
 
 const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
-const GEMINI_TTS_VOICE = 'Leda';
+const DEFAULT_VOICE = 'Leda';
 const PCM_SAMPLE_RATE = 24_000;
 const PCM_CHANNELS = 1;
 
@@ -19,19 +19,73 @@ function getGemini(): GoogleGenAI | null {
   return genai;
 }
 
-function buildTtsPrompt(text: string): string {
+export interface VoiceProfile {
+  name: string;
+  tone: string;
+  pitch: string;
+  personality: string;
+}
+
+export const VOICE_PROFILES: VoiceProfile[] = [
+  { name: 'Achernar', tone: 'Soft', pitch: 'Higher pitch', personality: 'Мягкий, нежный, подходит для утешения и ласки' },
+  { name: 'Achird', tone: 'Friendly', pitch: 'Lower middle pitch', personality: 'Дружелюбный, тёплый, универсальный собеседник' },
+  { name: 'Algenib', tone: 'Gravelly', pitch: 'Lower pitch', personality: 'Хриплый, харизматичный, для серьёзных тем' },
+  { name: 'Algieba', tone: 'Smooth', pitch: 'Lower pitch', personality: 'Плавный, спокойный, идеален для объяснений' },
+  { name: 'Alnilam', tone: 'Firm', pitch: 'Lower middle pitch', personality: 'Твёрдый, уверенный, для мотивации и инструкций' },
+  { name: 'Aoede', tone: 'Breezy', pitch: 'Middle pitch', personality: 'Лёгкий, воздушный, для повседневных бесед' },
+  { name: 'Autonoe', tone: 'Bright', pitch: 'Middle pitch', personality: 'Яркий, энергичный, для радостных новостей' },
+  { name: 'Callirrhoe', tone: 'Easy-going', pitch: 'Middle pitch', personality: 'Непринуждённый, расслабленный, для дружеского тона' },
+  { name: 'Charon', tone: 'Informative', pitch: 'Lower pitch', personality: 'Информативный, взвешенный, для фактов и новостей' },
+  { name: 'Despina', tone: 'Smooth', pitch: 'Middle pitch', personality: 'Гладкий, ровный, универсальный' },
+  { name: 'Enceladus', tone: 'Breathy', pitch: 'Lower pitch', personality: 'Дыхательный, интимный, для тихих моментов' },
+  { name: 'Erinome', tone: 'Clear', pitch: 'Middle pitch', personality: 'Чёткий, ясный, для объяснений и обучения' },
+  { name: 'Fenrir', tone: 'Excitable', pitch: 'Lower middle pitch', personality: 'Возбудимый, эмоциональный, для шуток и сюрпризов' },
+  { name: 'Gacrux', tone: 'Mature', pitch: 'Middle pitch', personality: 'Зрелый, мудрый, для советов и размышлений' },
+  { name: 'Iapetus', tone: 'Clear', pitch: 'Lower middle pitch', personality: 'Чёткий, глубокий, для деловых разговоров' },
+  { name: 'Kore', tone: 'Firm', pitch: 'Middle pitch', personality: 'Твёрдый, сбалансированный, хороший дефолт' },
+  { name: 'Laomedeia', tone: 'Upbeat', pitch: 'Higher pitch', personality: 'Жизнерадостный, бодрый, для утренних приветствий' },
+  { name: 'Leda', tone: 'Youthful', pitch: 'Higher pitch', personality: 'Молодой, игривый, энергичный, текущий дефолт' },
+  { name: 'Orus', tone: 'Firm', pitch: 'Lower middle pitch', personality: 'Твёрдый, уверенный, для мотивации' },
+  { name: 'Puck', tone: 'Upbeat', pitch: 'Middle pitch', personality: 'Весёлый, оживлённый, для шуток' },
+  { name: 'Pulcherrima', tone: 'Forward', pitch: 'Middle pitch', personality: 'Напористый, прямой, для важных напоминаний' },
+  { name: 'Rasalgethi', tone: 'Informative', pitch: 'Middle pitch', personality: 'Информативный, нейтральный, для новостей' },
+  { name: 'Sadachbia', tone: 'Lively', pitch: 'Lower pitch', personality: 'Живой, динамичный, для активных обсуждений' },
+  { name: 'Sadaltager', tone: 'Knowledgeable', pitch: 'Middle pitch', personality: 'Знающий, экспертный, для обучения' },
+  { name: 'Schedar', tone: 'Even', pitch: 'Lower middle pitch', personality: 'Ровный, стабильный, для долгих бесед' },
+  { name: 'Sulafat', tone: 'Warm', pitch: 'Middle pitch', personality: 'Тёплый, уютный, для поддержки и заботы' },
+  { name: 'Umbriel', tone: 'Easy-going', pitch: 'Lower middle pitch', personality: 'Непринуждённый, мягкий, для вечерних разговоров' },
+  { name: 'Vindemiatrix', tone: 'Gentle', pitch: 'Middle pitch', personality: 'Нежный, ласковый, для утешения' },
+  { name: 'Zephyr', tone: 'Current', pitch: 'Bright', personality: 'Современный, яркий, для молодёжного тона' },
+  { name: 'Zubenelgenubi', tone: 'Casual', pitch: 'Lower middle pitch', personality: 'Неформальный, расслабленный, для друзей' },
+];
+
+export function getVoiceProfiles(): VoiceProfile[] {
+  return VOICE_PROFILES;
+}
+
+export function getVoiceProfile(name: string): VoiceProfile | undefined {
+  return VOICE_PROFILES.find(v => v.name.toLowerCase() === name.toLowerCase());
+}
+
+export function validateVoiceName(name: string): string {
+  const found = getVoiceProfile(name);
+  return found ? found.name : DEFAULT_VOICE;
+}
+
+function buildTtsPrompt(text: string, voiceName: string): string {
+  const profile = getVoiceProfile(voiceName);
   return [
-    '# AUDIO PROFILE: Опекун',
-    'Role: Тёплая, заботливая AI-наставник для русскоязычных пользователей. Говорит на русском, живо и естественно.',
-    'Voice: Leda (fixed, configured in speechConfig).',
+    `# AUDIO PROFILE: ${voiceName}`,
+    `Role: Тёплая, заботливая AI-наставник для русскоязычных пользователей.`,
+    `Voice: ${voiceName} (${profile?.tone ?? 'unknown'}, ${profile?.pitch ?? 'unknown'}).`,
+    `Personality: ${profile?.personality ?? 'Универсальный'}.`,
     '',
     '## THE SCENE',
     'Личная переписка в Telegram. Пользователь — тот, о ком Опекун заботится.',
     '',
     '### DIRECTOR\'S NOTES',
-    '- Тон по умолчанию: тёплый, дружелюбный, как старшая сестра.',
-    '- Адаптируйся: расстроен — будь мягкой, опасность — серьёзной, радость — радуйся вместе.',
-    '- Не зачитывай аудио-теги вслух — они управляют интонацией, а не произносятся.',
+    '- Адаптируй тон к контексту сообщения.',
+    '- Не зачитывай аудио-теги вслух — они управляют интонацией.',
     '- Preserve meaning exactly. Return only the spoken transcript, no explanations.',
     '',
     '#### TRANSCRIPT',
@@ -81,21 +135,23 @@ async function convertPcmToOpusOgg(pcm: Buffer): Promise<Buffer> {
   });
 }
 
-export async function synthesizeSpeech(text: string): Promise<Buffer> {
+export async function synthesizeSpeech(text: string, voiceName?: string): Promise<Buffer> {
   const client = getGemini();
   if (!client) {
     throw new Error('Gemini API key not configured — TTS unavailable');
   }
 
+  const voice = validateVoiceName(voiceName ?? '');
+
   try {
     const response = await client.models.generateContent({
       model: GEMINI_TTS_MODEL,
-      contents: [{ parts: [{ text: buildTtsPrompt(text) }] }],
+      contents: [{ parts: [{ text: buildTtsPrompt(text, voice) }] }],
       config: {
         responseModalities: ['AUDIO'],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: GEMINI_TTS_VOICE },
+            prebuiltVoiceConfig: { voiceName: voice },
           },
         },
       },
@@ -106,7 +162,7 @@ export async function synthesizeSpeech(text: string): Promise<Buffer> {
     const pcm = Buffer.from(data, 'base64');
     return await convertPcmToOpusOgg(pcm);
   } catch (err) {
-    log.error({ err }, 'TTS failed');
+    log.error({ err, voice }, 'TTS failed');
     throw err;
   }
 }
