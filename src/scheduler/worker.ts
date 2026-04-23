@@ -1,13 +1,14 @@
 import { Worker } from 'bullmq';
-import { redisConnection } from './queue.js';
+import { workerRedisConnection } from './queue.js';
 import { runOrchestrator } from '../agent/orchestrator.js';
 import { usersRepo } from '../db/repos/users.js';
 import { messagesRepo } from '../db/repos/messages.js';
 import { lessonPlansRepo } from '../db/repos/lesson_plans.js';
 import { habitsRepo } from '../db/repos/habits.js';
 import { todosRepo } from '../db/repos/todos.js';
+import { jobExecutionsRepo } from '../db/repos/job_executions.js';
 import type { JobPayload } from './jobs.js';
-import { scheduleFollowup } from './proactive.js';
+
 import { callUser, isTwilioConfigured } from '../call/initiate.js';
 import { jobSkipOnceRepo } from '../db/repos/job_skip_once.js';
 import { repeatingJobsRepo } from '../db/repos/repeating_jobs.js';
@@ -40,20 +41,40 @@ export function startWorker(): Worker<JobPayload> {
       const { userId, telegramUserId, telegramChatId, kind, context, attemptNumber } = job.data;
       log.info({ jobId: job.id, kind, userId }, 'Processing job');
 
+      let wasSkipped = false;
+      let skipReason: string | undefined;
+      let orchestratorRan = false;
+
       const user = await usersRepo.findById(userId);
       if (!user) {
         log.warn({ userId }, 'User not found, skipping job');
+        wasSkipped = true;
+        skipReason = 'user_not_found';
+        await logExecution();
         return;
       }
       if (user.paused) {
         log.info({ userId, kind }, 'User paused, skipping job');
+        wasSkipped = true;
+        skipReason = 'user_paused';
+        await logExecution();
         return;
       }
 
       const skipId = job.data.schedulerId;
+
+      // For follow-up checks, the original schedulerId is stored in metadata
+      // so that subsequent follow-ups are tracked against the same event.
+      const originalSchedulerId = (typeof job.data.metadata?.originalSchedulerId === 'string')
+        ? job.data.metadata.originalSchedulerId
+        : skipId;
+
       if (skipId && await jobSkipOnceRepo.shouldSkip(skipId)) {
         await jobSkipOnceRepo.clear(skipId);
         log.info({ userId, kind, schedulerId: skipId }, 'Job skipped once by user request');
+        wasSkipped = true;
+        skipReason = 'skip_once';
+        await logExecution();
         return;
       }
 
@@ -61,6 +82,9 @@ export function startWorker(): Worker<JobPayload> {
         const exists = await repeatingJobsRepo.findBySchedulerId(skipId);
         if (!exists) {
           log.warn({ userId, kind, schedulerId: skipId }, 'Skipping scheduler job missing in DB source-of-truth');
+          wasSkipped = true;
+          skipReason = 'missing_in_db';
+          await logExecution();
           return;
         }
       }
@@ -70,6 +94,9 @@ export function startWorker(): Worker<JobPayload> {
         const lastReply = await messagesRepo.getLastUserReplyTime(userId);
         if (lastReply && lastReply.getTime() > job.timestamp) {
           log.info({ userId, jobId: job.id }, 'User already replied — skipping followup');
+          wasSkipped = true;
+          skipReason = 'user_replied';
+          await logExecution();
           return;
         }
       }
@@ -77,6 +104,9 @@ export function startWorker(): Worker<JobPayload> {
       // Don't follow up until the user has completed onboarding
       if (kind === 'followup_check' && !user.onboardingComplete) {
         log.info({ userId, jobId: job.id }, 'Onboarding not complete — skipping followup');
+        wasSkipped = true;
+        skipReason = 'onboarding_incomplete';
+        await logExecution();
         return;
       }
 
@@ -100,6 +130,9 @@ export function startWorker(): Worker<JobPayload> {
             reason: 'Ты долго не отвечал(а) на мои сообщения, вот и решила позвонить — всё хорошо?',
           });
         }
+        wasSkipped = true;
+        skipReason = 'attempt_limit_reached';
+        await logExecution();
         return;
       }
 
@@ -173,6 +206,9 @@ export function startWorker(): Worker<JobPayload> {
         const lastBotMsg = await messagesRepo.getLastBotMessageTime(userId);
         if (lastBotMsg && Date.now() - lastBotMsg.getTime() < 120_000) {
           log.info({ userId, jobId: job.id }, 'Skipping follow-up: bot sent message < 2 min ago');
+          wasSkipped = true;
+          skipReason = 'anti_spam';
+          await logExecution();
           return;
         }
       }
@@ -191,33 +227,51 @@ export function startWorker(): Worker<JobPayload> {
         onboardingComplete: user.onboardingComplete,
         mode: 'proactive',
         proactiveKind: kind,
+        proactiveSchedulerId: originalSchedulerId,
         proactiveContext: proactiveContext,
         proactiveAttempt: attemptNumber ?? 1,
       });
+      orchestratorRan = true;
 
-      // Auto-escalate followup_check: schedule next attempt if not at limit
-      if (kind === 'followup_check') {
-        const currentAttempt = attemptNumber ?? 1;
-        if (currentAttempt < followupLimit) {
-          await scheduleFollowup(
-            {
-              userId,
-              telegramUserId,
-              telegramChatId,
-              context: context ?? '',
-              metadata: {
-                ...(job.data.metadata ?? {}),
-                ...(followupForKind ? { followupForKind } : {}),
-              },
-            },
-            currentAttempt + 1,
-          );
+      await logExecution();
+
+      // Follow-up chain is driven ONLY by the model via followup_ask tool.
+      // Do NOT auto-schedule here — that creates duplicate jobs when the model
+      // also calls followup_ask, causing exponential message duplication.
+      // The model already has instructions in the system prompt to call
+      // followup_ask after proactive messages when appropriate.
+
+      async function logExecution(): Promise<void> {
+        try {
+          let userRepliedWithin30Min: boolean | undefined;
+          if (kind === 'followup_check' && job.timestamp) {
+            const lastReply = await messagesRepo.getLastUserReplyTime(userId);
+            userRepliedWithin30Min = lastReply
+              ? (lastReply.getTime() - job.timestamp < 30 * 60 * 1000)
+              : false;
+          }
+          await jobExecutionsRepo.create({
+            userId,
+            schedulerId: skipId,
+            kind,
+            attemptNumber,
+            wasSkipped,
+            skipReason,
+            userRepliedWithin30Min,
+          });
+        } catch (err) {
+          log.error({ err, userId, jobId: job.id }, 'Failed to log job execution');
         }
       }
     },
     {
-      connection: redisConnection,
+      connection: workerRedisConnection,
       concurrency: 1,
+      lockDuration: 120_000,
+      lockRenewTime: 30_000,
+      drainDelay: 30_000,
+      stalledInterval: 60_000,
+      maxStalledCount: 2,
     },
   );
 

@@ -66,6 +66,25 @@ describe('message_send_text', () => {
       { parse_mode: 'HTML' },
     );
   });
+
+  it('strips audio tags from text messages', async () => {
+    const { tools } = messagingTools(100, 1);
+    const text = '[curious] Приветик! [short pause] Слушай, время ужина! [mischievously] Ты уже придумал?';
+
+    await tools.message_send_text.execute({ text }, {} as never);
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      100,
+      'Приветик! Слушай, время ужина! Ты уже придумал?',
+      { parse_mode: 'HTML' },
+    );
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 1,
+      role: 'assistant',
+      content: 'Приветик! Слушай, время ужина! Ты уже придумал?',
+      source: 'text',
+    }));
+  });
 });
 
 describe('message_send_voice', () => {
@@ -88,7 +107,7 @@ describe('message_send_voice', () => {
     const result = await tools.message_send_voice.execute({ text: 'Привет голос' }, {} as never);
 
     expect(mockSendVoice).not.toHaveBeenCalled();
-    expect(mockSendMessage).toHaveBeenCalledWith(100, 'Привет голос');
+    expect(mockSendMessage).toHaveBeenCalledWith(100, 'Привет голос', { parse_mode: 'HTML' });
     expect(result).toEqual({ sent: true, mode: 'text_fallback' });
   });
 });

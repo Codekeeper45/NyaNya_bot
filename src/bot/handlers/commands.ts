@@ -120,6 +120,42 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     return next();
   });
 
+  botInstance.command('reschedule', async (ctx) => {
+    if (!ctx.dbUser) return;
+    if (!ctx.dbUser.onboardingComplete) {
+      await ctx.reply('Сначала пройди онбординг — я ещё не знаю твоё расписание. Напиши /start');
+      return;
+    }
+
+    log.info({ userId: ctx.dbUser.id }, '/reschedule command');
+
+    // Re-run setup to recreate all repeating jobs (including new ones like edu-suggestion, weekly-digest)
+    const { setupUserSchedules } = await import('../../scheduler/proactive.js');
+    try {
+      await setupUserSchedules(
+        {
+          id: ctx.dbUser.id,
+          telegramUserId: ctx.from!.id,
+          timezone: ctx.dbUser.timezone,
+          wakeTime: ctx.dbUser.wakeTime ?? '08:00',
+          sleepTime: ctx.dbUser.sleepTime ?? '23:00',
+          weekendWakeTime: ctx.dbUser.weekendWakeTime,
+          weekendSleepTime: ctx.dbUser.weekendSleepTime,
+        },
+        ctx.chat.id,
+        {
+          breakfastTime: ctx.dbUser.breakfastTime ?? '09:00',
+          lunchTime: ctx.dbUser.lunchTime ?? '13:00',
+          dinnerTime: ctx.dbUser.dinnerTime ?? '19:00',
+        },
+      );
+      await ctx.reply('✅ Расписание обновлено! Все напоминания пересозданы с актуальными настройками.');
+    } catch (err) {
+      log.error({ err, userId: ctx.dbUser.id }, 'Failed to reschedule');
+      await ctx.reply('❌ Не удалось обновить расписание. Попробуй позже или напиши разработчику.');
+    }
+  });
+
   botInstance.command('who', async (ctx) => {
     if (!ctx.dbUser) return;
     const uid = String(ctx.from!.id);

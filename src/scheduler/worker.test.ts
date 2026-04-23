@@ -14,6 +14,7 @@ vi.mock('bullmq', () => ({
 
 vi.mock('./queue.js', () => ({
   redisConnection: {},
+  workerRedisConnection: {},
 }));
 
 vi.mock('../agent/orchestrator.js', () => ({
@@ -34,6 +35,10 @@ vi.mock('../db/repos/messages.js', () => ({
 
 vi.mock('../db/repos/repeating_jobs.js', () => ({
   repeatingJobsRepo: { findBySchedulerId: vi.fn().mockResolvedValue({}) },
+}));
+
+vi.mock('../db/repos/job_executions.js', () => ({
+  jobExecutionsRepo: { create: vi.fn() },
 }));
 
 vi.mock('../db/repos/lesson_plans.js', () => ({
@@ -122,7 +127,7 @@ describe('worker followup attempt limit', () => {
     expect(mockScheduleFollowup).not.toHaveBeenCalled();
   });
 
-  it('schedules next followup for attempt 1 when under limit', async () => {
+  it('does NOT auto-schedule next followup — only model via followup_ask decides', async () => {
     mockFindById.mockResolvedValue({
       id: 1,
       name: 'User',
@@ -140,7 +145,7 @@ describe('worker followup attempt limit', () => {
     await state.capturedProcessor!(makeFollowupJob(1));
 
     expect(mockRunOrchestrator).toHaveBeenCalled();
-    expect(mockScheduleFollowup).toHaveBeenCalled();
+    expect(mockScheduleFollowup).not.toHaveBeenCalled();
   });
 
   it('respects global followup limit from preferences', async () => {

@@ -31,6 +31,7 @@ vi.mock('../db/repos/messages.js', () => ({
   messagesRepo: {
     getLastUserReplyTime: vi.fn(),
     getWeeklyStats: vi.fn(),
+    getLastBotMessageTime: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -55,6 +56,7 @@ import { scheduleFollowup } from '../scheduler/proactive.js';
 const mockRunOrchestrator = runOrchestrator as ReturnType<typeof vi.fn>;
 const mockFindById = usersRepo.findById as ReturnType<typeof vi.fn>;
 const mockGetLastUserReplyTime = messagesRepo.getLastUserReplyTime as ReturnType<typeof vi.fn>;
+const mockGetLastBotMessageTime = messagesRepo.getLastBotMessageTime as ReturnType<typeof vi.fn>;
 const mockGetWeeklyStats = messagesRepo.getWeeklyStats as ReturnType<typeof vi.fn>;
 const mockGetLessonStats = lessonPlansRepo.getWeeklyStats as ReturnType<typeof vi.fn>;
 const mockScheduleFollowup = scheduleFollowup as ReturnType<typeof vi.fn>;
@@ -72,6 +74,7 @@ beforeEach(() => {
   state.workerOn.mockReset();
   mockFindById.mockResolvedValue(baseUser);
   mockGetLastUserReplyTime.mockResolvedValue(null);
+  mockGetLastBotMessageTime.mockResolvedValue(null);
   mockGetWeeklyStats.mockResolvedValue({ totalMessages: 5 });
   mockGetLessonStats.mockResolvedValue({ totalPlans: 2, completedPlans: 1 });
   startWorker();
@@ -153,7 +156,7 @@ describe('T-31: Followup skip when user already replied', () => {
 });
 
 describe('T-32: Followup escalation stops at attempt 3', () => {
-  it('schedules next followup for attempts 1-2', async () => {
+  it('does NOT auto-schedule next followup for attempts 1-2 — only model decides', async () => {
     for (let attempt = 1; attempt <= 2; attempt++) {
       vi.clearAllMocks();
       mockFindById.mockResolvedValue(baseUser);
@@ -165,7 +168,8 @@ describe('T-32: Followup escalation stops at attempt 3', () => {
         timestamp: Date.now() - 10_000,
       });
 
-      expect(mockScheduleFollowup).toHaveBeenCalledWith(expect.any(Object), attempt + 1);
+      expect(mockRunOrchestrator).toHaveBeenCalled();
+      expect(mockScheduleFollowup).not.toHaveBeenCalled();
     }
   });
 

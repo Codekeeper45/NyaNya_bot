@@ -1,8 +1,8 @@
-import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer, bigint, unique, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
-  telegramUserId: integer('telegram_user_id').notNull().unique(),
+  telegramUserId: bigint('telegram_user_id', { mode: 'number' }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull().default('User'),
   timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Almaty'),
   wakeTime: varchar('wake_time', { length: 5 }).default('08:00'),
@@ -37,7 +37,9 @@ export const messages = pgTable('messages', {
   source: varchar('source', { length: 20 }).default('text'), // text | voice | photo
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  index('idx_messages_user_created').on(t.userId, t.createdAt),
+]);
 
 export const jobs = pgTable('jobs', {
   id: serial('id').primaryKey(),
@@ -49,7 +51,10 @@ export const jobs = pgTable('jobs', {
   scheduledAt: timestamp('scheduled_at'),
   processedAt: timestamp('processed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  index('idx_jobs_bull_id').on(t.bullJobId),
+  index('idx_jobs_user_kind').on(t.userId, t.kind),
+]);
 
 export const lessonPlans = pgTable('lesson_plans', {
   id: serial('id').primaryKey(),
@@ -75,7 +80,9 @@ export const repeatingJobs = pgTable('repeating_jobs', {
   cronPattern: varchar('cron_pattern', { length: 100 }).notNull(),
   timezone: varchar('timezone', { length: 64 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  index('idx_repeating_jobs_user').on(t.userId),
+]);
 
 export const habits = pgTable('habits', {
   id: serial('id').primaryKey(),
@@ -103,7 +110,9 @@ export const expenses = pgTable('expenses', {
   note: varchar('note', { length: 500 }),
   date: varchar('date', { length: 10 }).notNull(), // YYYY-MM-DD
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  index('idx_expenses_user_date').on(t.userId, t.date),
+]);
 
 export const todos = pgTable('todos', {
   id: serial('id').primaryKey(),
@@ -113,13 +122,30 @@ export const todos = pgTable('todos', {
   deadline: timestamp('deadline'),
   doneAt: timestamp('done_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  index('idx_todos_user_done').on(t.userId, t.done),
+]);
 
 export const jobSkipOnce = pgTable('job_skip_once', {
   id: serial('id').primaryKey(),
   schedulerId: varchar('scheduler_id', { length: 255 }).notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const jobExecutions = pgTable('job_executions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  schedulerId: varchar('scheduler_id', { length: 255 }),
+  kind: varchar('kind', { length: 50 }).notNull(),
+  attemptNumber: integer('attempt_number'),
+  wasSkipped: boolean('was_skipped').notNull().default(false),
+  skipReason: varchar('skip_reason', { length: 100 }),
+  userRepliedWithin30Min: boolean('user_replied_within_30min'),
+  executedAt: timestamp('executed_at').defaultNow().notNull(),
+}, (t) => [
+  index('idx_job_exec_user_kind_executed_at').on(t.userId, t.kind, t.executedAt),
+  index('idx_job_exec_scheduler_id').on(t.schedulerId),
+]);
 
 // Type exports
 export type User = typeof users.$inferSelect;
@@ -134,3 +160,5 @@ export type Expense = typeof expenses.$inferSelect;
 export type Todo = typeof todos.$inferSelect;
 export type JobSkipOnce = typeof jobSkipOnce.$inferSelect;
 export type NewJobSkipOnce = typeof jobSkipOnce.$inferInsert;
+export type JobExecution = typeof jobExecutions.$inferSelect;
+export type NewJobExecution = typeof jobExecutions.$inferInsert;

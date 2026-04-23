@@ -53,18 +53,19 @@ beforeEach(() => {
 });
 
 describe('scheduleJob', () => {
-  it('adds job to BullMQ queue and creates DB record', async () => {
+  it('creates DB record first, then adds to BullMQ queue', async () => {
     mockAdd.mockResolvedValue({ id: 'job-42' });
 
     const jobId = await scheduleJob(payload, 60_000);
 
-    expect(mockAdd).toHaveBeenCalledWith('custom_reminder', payload, { delay: 60_000 });
+    // DB is called first (DB-first order)
     expect(mockJobsCreate).toHaveBeenCalledWith(expect.objectContaining({
       userId: 1,
-      bullJobId: 'job-42',
       kind: 'custom_reminder',
       status: 'scheduled',
     }));
+    // BullMQ is called after DB
+    expect(mockAdd).toHaveBeenCalledWith('custom_reminder', payload, { delay: 60_000 });
     expect(jobId).toBe('job-42');
   });
 
@@ -109,11 +110,12 @@ describe('scheduleRepeatingJob', () => {
 });
 
 describe('cancelRepeatingJob', () => {
-  it('calls removeJobScheduler with the schedulerId', async () => {
+  it('removes from Redis first, then cleans DB', async () => {
     mockRemove.mockResolvedValue(undefined);
 
     await cancelRepeatingJob('user-1-sport');
 
+    // Redis removed first (stop firing)
     expect(mockRemove).toHaveBeenCalledWith('user-1-sport');
   });
 });

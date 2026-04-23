@@ -169,14 +169,64 @@ export async function restoreSchedules(): Promise<void> {
   log.info({ total: stored.length, restored, removed }, 'Schedules synced with DB');
 }
 
+export async function syncSchedules(): Promise<void> {
+  const stored = await repeatingJobsRepo.findAll();
+  const storedMap = new Map(stored.map(j => [j.schedulerId, j]));
+
+  const existing = await opekuQueue.getJobSchedulers();
+  const existingMap = new Map(existing.map(s => [s.key, s]));
+
+  let removed = 0;
+  let restored = 0;
+  let updated = 0;
+
+  // Remove from Redis anything not in DB (orphaned entries)
+  for (const [key, s] of existingMap) {
+    if (key && key.startsWith('user-') && !storedMap.has(key)) {
+      await opekuQueue.removeJobScheduler(key);
+      removed++;
+    }
+  }
+
+  // Add to Redis anything in DB but missing from Redis, or with different pattern/tz
+  for (const [schedulerId, job] of storedMap) {
+    const existingScheduler = existingMap.get(schedulerId);
+    if (!existingScheduler) {
+      await opekuQueue.upsertJobScheduler(
+        schedulerId,
+        { pattern: job.cronPattern, tz: job.timezone },
+        { name: job.kind, data: job.payload },
+      );
+      restored++;
+      continue;
+    }
+
+    // Check if pattern or timezone changed
+    const existingPattern = (existingScheduler as unknown as Record<string, unknown>)?.pattern;
+    const existingTz = (existingScheduler as unknown as Record<string, unknown>)?.tz;
+    if (existingPattern !== job.cronPattern || existingTz !== job.timezone) {
+      await opekuQueue.upsertJobScheduler(
+        schedulerId,
+        { pattern: job.cronPattern, tz: job.timezone },
+        { name: job.kind, data: job.payload },
+      );
+      updated++;
+    }
+  }
+
+  if (removed > 0 || restored > 0 || updated > 0) {
+    log.info({ total: stored.length, restored, removed, updated }, 'Periodic schedule sync completed');
+  }
+}
+
 export async function scheduleFollowup(
   payload: Omit<JobPayload, 'kind'>,
   attemptNumber: number,
 ): Promise<void> {
   if (attemptNumber > 3) return; // Give up
 
-  // Escalating delays: 2min, 3min, 5min
-  const delaysMinutes = [2, 3, 5];
+  // Escalating delays: 3min, 5min, 10min (matches system prompt)
+  const delaysMinutes = [3, 5, 10];
   const delayMs = (delaysMinutes[attemptNumber - 1] ?? 180) * 60 * 1000;
 
   await scheduleJob(

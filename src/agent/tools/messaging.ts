@@ -8,43 +8,13 @@ import { createChildLogger } from '../../lib/logger.js';
 
 const log = createChildLogger('tool:messaging');
 
-const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-const DUPLICATE_PREFIX_LEN = 40;
-
-function normalizeForCompare(text: string): string {
+// Audio tags like [excited], [sighs], [short pause] — allowed only in voice messages
+// This function strips them from text messages to avoid visual garbage
+function stripAudioTags(text: string): string {
   return text
-    .toLowerCase()
-    .replace(/[\s\p{P}]/gu, '')
-    .slice(0, 200);
-}
-
-function looksLikeDuplicate(newText: string, oldText: string): boolean {
-  const n1 = normalizeForCompare(newText);
-  const n2 = normalizeForCompare(oldText);
-  if (n1.length < 10 || n2.length < 10) return false;
-  // If one is substring of the other → likely duplicate
-  if (n1.includes(n2) || n2.includes(n1)) return true;
-  // If first N chars match
-  return n1.slice(0, DUPLICATE_PREFIX_LEN) === n2.slice(0, DUPLICATE_PREFIX_LEN);
-}
-
-async function isRecentDuplicate(userId: number, text: string): Promise<boolean> {
-  try {
-    const recent = await messagesRepo.getRecent(userId, 10);
-    const now = Date.now();
-    for (const msg of recent) {
-      if (msg.role !== 'assistant') continue;
-      const age = now - new Date(msg.createdAt).getTime();
-      if (age > DUPLICATE_WINDOW_MS) continue;
-      if (looksLikeDuplicate(text, msg.content)) {
-        log.warn({ userId, ageSec: Math.round(age / 1000) }, 'Duplicate message detected, skipping send');
-        return true;
-      }
-    }
-  } catch {
-    // If check fails, allow send
-  }
-  return false;
+    .replace(/\s*\[[^\]]+\]\s*/g, ' ')  // replace tag+surrounding spaces with single space
+    .replace(/\s{2,}/g, ' ')            // collapse multiple spaces
+    .trim();
 }
 
 export function markdownToHtml(text: string): string {
@@ -73,22 +43,26 @@ export function messagingTools(chatId: number, userId: number) {
       }),
       execute: async ({ text }) => {
         if (sent) return { sent: false, reason: 'already_sent' };
-        if (await isRecentDuplicate(userId, text)) return { sent: false, reason: 'duplicate' };
 
-        log.debug({ chatId, textLen: text.length }, 'Sending text');
+        const cleanText = stripAudioTags(text);
+        if (cleanText !== text) {
+          log.warn({ chatId, originalLen: text.length, cleanLen: cleanText.length }, 'Audio tags stripped from text message');
+        }
+
+        log.debug({ chatId, textLen: cleanText.length }, 'Sending text');
         try {
-          await bot.api.sendMessage(chatId, markdownToHtml(text), { parse_mode: 'HTML' });
+          await bot.api.sendMessage(chatId, markdownToHtml(cleanText), { parse_mode: 'HTML' });
         } catch {
-          await bot.api.sendMessage(chatId, text);
+          await bot.api.sendMessage(chatId, cleanText);
         }
         sent = true;
         await messagesRepo.create({
           userId,
           role: 'assistant',
-          content: text,
+          content: cleanText,
           source: 'text',
         });
-        return { sent: true, length: text.length };
+        return { sent: true, length: cleanText.length };
       },
     }),
 
@@ -99,7 +73,6 @@ export function messagingTools(chatId: number, userId: number) {
       }),
       execute: async ({ text }) => {
         if (sent) return { sent: false, reason: 'already_sent' };
-        if (await isRecentDuplicate(userId, text)) return { sent: false, reason: 'duplicate' };
 
         log.debug({ chatId, textLen: text.length }, 'Sending voice');
         try {
@@ -115,14 +88,19 @@ export function messagingTools(chatId: number, userId: number) {
           });
           return { sent: true, mode: 'voice' };
         } catch {
-          // Fallback to text if TTS fails
-          log.warn('TTS failed, falling back to text');
-          await bot.api.sendMessage(chatId, text);
+          // Fallback to text if TTS fails — strip audio tags so they don't appear as garbage
+          const fallbackText = stripAudioTags(text);
+          log.warn({ chatId, originalLen: text.length, cleanLen: fallbackText.length }, 'TTS failed, falling back to text');
+          try {
+            await bot.api.sendMessage(chatId, markdownToHtml(fallbackText), { parse_mode: 'HTML' });
+          } catch {
+            await bot.api.sendMessage(chatId, fallbackText);
+          }
           sent = true;
           await messagesRepo.create({
             userId,
             role: 'assistant',
-            content: text,
+            content: fallbackText,
             source: 'text',
             metadata: { intended_voice: true, tts_failed: true },
           });

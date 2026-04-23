@@ -33,6 +33,7 @@ export function allTools(ctx: OrchestratorInput) {
       ctx.userTimezone,
       setOnboardingDone,
       ctx.proactiveKind,
+      ctx.proactiveSchedulerId,
     ),
     ...educationTools(ctx.userId, ctx.telegramUserId, ctx.telegramChatId, ctx.userTimezone),
     ...weatherTools(),

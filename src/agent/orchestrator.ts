@@ -58,6 +58,7 @@ export interface OrchestratorInput {
   userMessage?: string;
   images?: Array<{ data: string; mimeType: string }>;
   proactiveKind?: string;
+  proactiveSchedulerId?: string;
   proactiveContext?: string;
   proactiveAttempt?: number;
   onboardingComplete?: boolean;
@@ -66,10 +67,15 @@ export interface OrchestratorInput {
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   const uid = String(input.telegramUserId);
 
-  // 1. Search Mem0 for relevant context
+  // 1. Search Mem0 for relevant context (graceful fallback on rate limit / errors)
   const query = input.userMessage ?? input.proactiveContext ?? '';
-  const memoryResults = await mem0.search(query, uid);
-  const memories = memoryResults.map((m: { memory?: string }) => m.memory ?? '').filter(Boolean);
+  let memories: string[] = [];
+  try {
+    const memoryResults = await mem0.search(query, uid);
+    memories = memoryResults.map((m: { memory?: string }) => m.memory ?? '').filter(Boolean);
+  } catch (err) {
+    log.warn({ userId: input.userId, err }, 'Mem0 search failed, proceeding without memories');
+  }
 
   // 2. Load recent message history from Postgres
   const recentMessages = await messagesRepo.getRecent(input.userId, 20);

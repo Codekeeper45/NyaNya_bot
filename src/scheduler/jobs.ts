@@ -29,17 +29,18 @@ export interface JobPayload {
 }
 
 export async function scheduleJob(payload: JobPayload, delayMs: number): Promise<string> {
-  const job = await opekuQueue.add(payload.kind, payload, { delay: delayMs });
-  const jobId = job.id ?? '';
-
+  // DB first to avoid orphaned BullMQ jobs if DB fails
+  const scheduledAt = new Date(Date.now() + delayMs);
   await jobsRepo.create({
     userId: payload.userId,
-    bullJobId: jobId || undefined,
     kind: payload.kind,
     payload: payload as unknown as Record<string, unknown>,
     status: 'scheduled',
-    scheduledAt: new Date(Date.now() + delayMs),
+    scheduledAt,
   });
+
+  const job = await opekuQueue.add(payload.kind, payload, { delay: delayMs });
+  const jobId = job.id ?? '';
 
   log.info({ userId: payload.userId, kind: payload.kind, delayMs, jobId }, 'Job scheduled');
   return jobId;
@@ -52,11 +53,7 @@ export async function scheduleRepeatingJob(
   timezone: string,
 ): Promise<void> {
   const payloadWithId: JobPayload = { ...payload, schedulerId };
-  await opekuQueue.upsertJobScheduler(
-    schedulerId,
-    { pattern: cronPattern, tz: timezone },
-    { name: payload.kind, data: payloadWithId },
-  );
+  // DB first to avoid race with syncSchedules (which reads DB as source of truth)
   await repeatingJobsRepo.upsert({
     userId: payload.userId,
     schedulerId,
@@ -65,6 +62,11 @@ export async function scheduleRepeatingJob(
     cronPattern,
     timezone,
   });
+  await opekuQueue.upsertJobScheduler(
+    schedulerId,
+    { pattern: cronPattern, tz: timezone },
+    { name: payload.kind, data: payloadWithId },
+  );
   log.info({ schedulerId, kind: payload.kind, cron: cronPattern, tz: timezone }, 'Repeating job set');
 }
 
@@ -77,9 +79,10 @@ export async function cancelJob(bullJobId: string): Promise<void> {
 }
 
 export async function cancelRepeatingJob(schedulerId: string): Promise<void> {
+  // Redis first: stop firing before cleaning DB
+  await opekuQueue.removeJobScheduler(schedulerId);
   await jobSkipOnceRepo.clear(schedulerId);
   await repeatingJobsRepo.remove(schedulerId);
-  await opekuQueue.removeJobScheduler(schedulerId);
   log.info({ schedulerId }, 'Repeating job cancelled');
 }
 
