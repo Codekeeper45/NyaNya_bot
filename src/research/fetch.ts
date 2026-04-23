@@ -3,13 +3,13 @@ import { tavilyExtract, isTavilyAvailable } from './tavily.js';
 
 const log = createChildLogger('webfetch');
 
-export interface FetchResult {
+interface FetchResult {
   title: string;
   content: string;
   excerpt: string;
 }
 
-export interface FetchManyResult extends FetchResult {
+interface FetchManyResult extends FetchResult {
   url: string;
   fetchedOk: boolean;
 }

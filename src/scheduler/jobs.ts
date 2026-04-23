@@ -6,7 +6,7 @@ import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('jobs');
 
-export type JobKind =
+type JobKind =
   | 'morning_greeting'
   | 'meal_reminder'
   | 'lesson_session'

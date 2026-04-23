@@ -22,6 +22,9 @@ vi.mock('../../db/repos/repeating_jobs.js', () => ({
 vi.mock('../../db/repos/job_skip_once.js', () => ({
   jobSkipOnceRepo: { set: vi.fn(), shouldSkip: vi.fn().mockResolvedValue(false), clear: vi.fn() },
 }));
+vi.mock('../../db/repos/job_executions.js', () => ({
+  jobExecutionsRepo: { countFollowupsSinceLastProactive: vi.fn().mockResolvedValue(0) },
+}));
 
 import {
   scheduleJob,
@@ -152,6 +155,6 @@ describe('followup_ask', () => {
       expect.objectContaining({ kind: 'followup_check', context: 'Check onboarding' }),
       5 * 60_000,
     );
-    expect(result).toEqual({ scheduled: true, inMinutes: 5, jobId: 'job-456' });
+    expect(result).toEqual({ scheduled: true, inMinutes: 5, attemptNumber: 1, jobId: 'job-456' });
   });
 });

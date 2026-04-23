@@ -12,10 +12,6 @@ function getClient(): MemoryClient | null {
   return client;
 }
 
-export function isMem0Available(): boolean {
-  return !!config.mem0ApiKey;
-}
-
 export const mem0 = {
   async add(
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,

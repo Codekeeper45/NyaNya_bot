@@ -81,10 +81,6 @@ async function convertPcmToOpusOgg(pcm: Buffer): Promise<Buffer> {
   });
 }
 
-export function isTTSAvailable(): boolean {
-  return !!config.googleGenaiApiKey && !!ffmpeg.path;
-}
-
 export async function synthesizeSpeech(text: string): Promise<Buffer> {
   const client = getGemini();
   if (!client) {

@@ -23,29 +23,7 @@ export const jobExecutionsRepo = {
     });
   },
 
-  async findRecentByUser(userId: number, days: number): Promise<typeof jobExecutions.$inferSelect[]> {
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    return db()
-      .select()
-      .from(jobExecutions)
-      .where(and(
-        eq(jobExecutions.userId, userId),
-        gte(jobExecutions.executedAt, since)
-      ))
-      .orderBy(jobExecutions.executedAt);
-  },
-
-  async findBySchedulerId(schedulerId: string, days: number): Promise<typeof jobExecutions.$inferSelect[]> {
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    return db()
-      .select()
-      .from(jobExecutions)
-      .where(and(
-        eq(jobExecutions.schedulerId, schedulerId),
-        gte(jobExecutions.executedAt, since)
-      ))
-      .orderBy(jobExecutions.executedAt);
-  },
+  // Note: findRecentByUser and findBySchedulerId removed as dead code.
 
   async getSkipRateByDayOfWeek(userId: number, kind: string): Promise<Record<number, { total: number; skipped: number }>> {
     const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);

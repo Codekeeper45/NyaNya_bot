@@ -10,7 +10,7 @@ import { jobsRepo } from '../../db/repos/jobs.js';
 import { repeatingJobsRepo } from '../../db/repos/repeating_jobs.js';
 import { jobSkipOnceRepo } from '../../db/repos/job_skip_once.js';
 import { jobExecutionsRepo } from '../../db/repos/job_executions.js';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import { fromZonedTime } from 'date-fns-tz';
 import CronParser from 'cron-parser';
 
 // Routine types that map to scheduler ID prefixes
@@ -242,7 +242,7 @@ Cron формат: "минуты часы день_месяца месяц де�
         // Build target datetime string in user's timezone (today at newTime)
         const todayInTz = new Intl.DateTimeFormat('sv-SE', { timeZone: tz }).format(now);
         const targetDateStr = `${todayInTz}T${newTime}:00`;
-        const targetUtc = zonedTimeToUtc(targetDateStr, tz);
+        const targetUtc = fromZonedTime(targetDateStr, tz);
         const delayMs = targetUtc.getTime() - now;
 
         if (delayMs <= 0 || delayMs > 24 * 60 * 60 * 1000) {

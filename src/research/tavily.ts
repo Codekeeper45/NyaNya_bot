@@ -14,7 +14,7 @@ function getClient(): ReturnType<typeof tavily> | null {
   return _client;
 }
 
-export interface TavilySearchResult {
+interface TavilySearchResult {
   title: string;
   url: string;
   snippet: string;
@@ -22,7 +22,7 @@ export interface TavilySearchResult {
   rawContent?: string;
 }
 
-export interface TavilyExtractResult {
+interface TavilyExtractResult {
   url: string;
   title: string;
   content: string;

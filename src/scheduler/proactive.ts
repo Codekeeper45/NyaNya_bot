@@ -219,24 +219,5 @@ export async function syncSchedules(): Promise<void> {
   }
 }
 
-export async function scheduleFollowup(
-  payload: Omit<JobPayload, 'kind'>,
-  attemptNumber: number,
-): Promise<void> {
-  if (attemptNumber > 3) return; // Give up
-
-  // Escalating delays: 3min, 5min, 10min (matches system prompt)
-  const delaysMinutes = [3, 5, 10];
-  const delayMs = (delaysMinutes[attemptNumber - 1] ?? 180) * 60 * 1000;
-
-  await scheduleJob(
-    {
-      ...payload,
-      kind: 'followup_check',
-      attemptNumber,
-    },
-    delayMs,
-  );
-
-  log.info({ userId: payload.userId, attempt: attemptNumber, delayMs }, 'Followup scheduled');
-}
+// Follow-up chain is driven ONLY by the model via followup_ask tool.
+// Do NOT auto-schedule here — that creates duplicate jobs.

@@ -29,7 +29,7 @@ const configSchema = z.object({
   defaultTimezone: z.string().default('Asia/Almaty'),
 });
 
-export type Config = z.infer<typeof configSchema>;
+type Config = z.infer<typeof configSchema>;
 
 const parsed = configSchema.parse({
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,

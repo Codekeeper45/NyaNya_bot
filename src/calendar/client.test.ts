@@ -8,7 +8,6 @@ import { usersRepo } from '../db/repos/users.js';
 import {
   getRefreshToken,
   listCalendars,
-  listEvents,
   listAllEvents,
   createEvent,
   updateEvent,
@@ -78,31 +77,6 @@ describe('listCalendars', () => {
   it('throws error when user has no refresh token', async () => {
     mockFindById.mockResolvedValue({ googleRefreshToken: null });
     await expect(listCalendars(1)).rejects.toThrow('Google Calendar не подключён');
-  });
-});
-
-describe('listEvents', () => {
-  it('filters events by timeMin/timeMax and returns parsed events', async () => {
-    mockFindById.mockResolvedValue({ googleRefreshToken: 'rt' });
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn().mockResolvedValue({ access_token: 'at' }) })
-      .mockResolvedValueOnce({
-        ok: true, status: 200, json: vi.fn().mockResolvedValue({
-          items: [{
-            id: 'e1',
-            summary: 'Встреча',
-            start: { dateTime: '2025-04-17T10:00:00Z' },
-            end: { dateTime: '2025-04-17T11:00:00Z' },
-          }],
-        }),
-      });
-
-    const events = await listEvents(1, '2025-04-17T00:00:00Z', '2025-04-17T23:59:59Z', 10, 'primary');
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ id: 'e1', summary: 'Встреча', start: '2025-04-17T10:00:00Z' });
   });
 });
 

@@ -66,10 +66,6 @@ export const lessonPlansRepo = {
       .where(and(eq(lessonPlans.id, id), eq(lessonPlans.userId, userId)));
   },
 
-  async update(id: number, data: Partial<Omit<LessonPlan, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
-    await db().update(lessonPlans).set(data).where(eq(lessonPlans.id, id));
-  },
-
   async updateStatusForUser(id: number, userId: number, status: LessonPlan['status']): Promise<boolean> {
     const updated = await db()
       .update(lessonPlans)
@@ -77,10 +73,6 @@ export const lessonPlansRepo = {
       .where(and(eq(lessonPlans.id, id), eq(lessonPlans.userId, userId)))
       .returning({ id: lessonPlans.id });
     return updated.length > 0;
-  },
-
-  async delete(id: number): Promise<void> {
-    await db().delete(lessonPlans).where(eq(lessonPlans.id, id));
   },
 
   async getWeeklyStats(userId: number): Promise<{ totalPlans: number; completedPlans: number }> {

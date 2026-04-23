@@ -1,4 +1,4 @@
-export interface SystemPromptParams {
+interface SystemPromptParams {
   userName: string;
   userId?: number;
   userTimezone: string;

@@ -38,7 +38,7 @@ export async function getRefreshToken(userId: number): Promise<string | null> {
   return user?.googleRefreshToken ?? null;
 }
 
-export interface CalendarEvent {
+interface CalendarEvent {
   id: string;
   iCalUID?: string;
   summary: string;
@@ -49,7 +49,7 @@ export interface CalendarEvent {
   calendarId?: string;
 }
 
-export interface CalendarInfo {
+interface CalendarInfo {
   id: string;
   summary: string;
   primary?: boolean;
@@ -118,32 +118,6 @@ async function listEventsWithAccessToken(
   const data = await handleCalendarResponse(res, userId);
 
   return ((data.items as Array<Record<string, unknown>>) ?? []).map(e => parseEvent(e, calendarId));
-}
-
-export async function listEvents(
-  userId: number,
-  timeMin: string,
-  timeMax: string,
-  maxResults = 10,
-  calendarId = 'primary',
-): Promise<CalendarEvent[]> {
-  const refreshToken = await getRefreshToken(userId);
-  if (!refreshToken) throw new Error('Google Calendar не подключён. Используй /gcal');
-
-  const accessToken = await getAccessToken(refreshToken);
-  return listEventsWithAccessToken(userId, accessToken, timeMin, timeMax, maxResults, calendarId);
-}
-
-export async function getEvent(userId: number, eventId: string, calendarId = 'primary'): Promise<CalendarEvent> {
-  const refreshToken = await getRefreshToken(userId);
-  if (!refreshToken) throw new Error('Google Calendar не подключён. Используй /gcal');
-
-  const accessToken = await getAccessToken(refreshToken);
-  const res = await fetch(`${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const data = await handleCalendarResponse(res, userId);
-  return parseEvent(data, calendarId);
 }
 
 export async function createEvent(

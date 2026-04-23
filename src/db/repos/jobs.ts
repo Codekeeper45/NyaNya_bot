@@ -29,28 +29,7 @@ export const jobsRepo = {
     return row;
   },
 
-  async updateStatus(id: number, status: string): Promise<void> {
-    await db().update(jobs).set({
-      status,
-      ...(status === 'completed' ? { processedAt: new Date() } : {}),
-    }).where(eq(jobs.id, id));
-  },
-
-  async findByUserAndKind(userId: number, kind: string): Promise<Job[]> {
-    return db()
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.userId, userId), eq(jobs.kind, kind)));
-  },
-
-  async findByBullJobId(bullJobId: string): Promise<Job | undefined> {
-    const result = await db()
-      .select()
-      .from(jobs)
-      .where(eq(jobs.bullJobId, bullJobId))
-      .limit(1);
-    return result[0];
-  },
+  // Note: updateStatus, findByUserAndKind, findByBullJobId removed as dead code.
 
   async belongsToUser(bullJobId: string, userId: number): Promise<boolean> {
     const result = await db()

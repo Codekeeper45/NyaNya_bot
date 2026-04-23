@@ -86,7 +86,7 @@ async function detectFollowupPatterns(userId: number): Promise<DetectedPattern[]
   return patterns;
 }
 
-export async function detectPatternsForUser(userId: number): Promise<DetectedPattern[]> {
+async function detectPatternsForUser(userId: number): Promise<DetectedPattern[]> {
   const [routinePatterns, followupPatterns] = await Promise.all([
     detectRoutineSkipByDay(userId),
     detectFollowupPatterns(userId),
@@ -94,7 +94,7 @@ export async function detectPatternsForUser(userId: number): Promise<DetectedPat
   return [...routinePatterns, ...followupPatterns];
 }
 
-export async function sendPatternSuggestion(pattern: DetectedPattern): Promise<void> {
+async function sendPatternSuggestion(pattern: DetectedPattern): Promise<void> {
   const user = await usersRepo.findById(pattern.userId);
   if (!user) return;
 

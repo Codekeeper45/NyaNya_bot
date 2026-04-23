@@ -33,19 +33,6 @@ describe('jobExecutionsRepo', () => {
     expect(mockDb.insert).toHaveBeenCalled();
   });
 
-  it('finds recent executions by user', async () => {
-    const mockData = [{ id: 1, userId: 1, kind: 'morning_greeting' }];
-    mockDb.select.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          orderBy: vi.fn().mockResolvedValue(mockData),
-        }),
-      }),
-    });
-    const result = await jobExecutionsRepo.findRecentByUser(1, 7);
-    expect(result).toEqual(mockData);
-  });
-
   it('calculates skip rate by day of week', async () => {
     mockDb.select.mockReturnValue({
       from: vi.fn().mockReturnValue({

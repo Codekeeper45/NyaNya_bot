@@ -3,7 +3,7 @@ import { tavilySearch, isTavilyAvailable } from './tavily.js';
 
 const log = createChildLogger('search');
 
-export interface SearchResult {
+interface SearchResult {
   title: string;
   url: string;
   snippet: string;

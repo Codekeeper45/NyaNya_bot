@@ -36,16 +36,6 @@ export const messagesRepo = {
       .limit(limit);
   },
 
-  async getLastUserMessageTime(userId: number): Promise<Date | null> {
-    const result = await db()
-      .select({ createdAt: messages.createdAt })
-      .from(messages)
-      .where(eq(messages.userId, userId))
-      .orderBy(desc(messages.createdAt))
-      .limit(1);
-    return result[0]?.createdAt ?? null;
-  },
-
   async getWeeklyStats(userId: number): Promise<{ totalMessages: number }> {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
