@@ -21,6 +21,61 @@ function clampFollowupLimit(value: unknown, fallback = 3): number {
   return Math.max(0, Math.min(3, Math.floor(value)));
 }
 
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function isUserAsleep(
+  nowMinutes: number,
+  sleepMinutes: number,
+  wakeMinutes: number,
+): boolean {
+  if (sleepMinutes > wakeMinutes) {
+    // Sleep crosses midnight (e.g. 23:00 → 08:00)
+    return nowMinutes >= sleepMinutes || nowMinutes < wakeMinutes;
+  }
+  // Sleep does not cross midnight (e.g. 02:00 → 10:00)
+  return nowMinutes >= sleepMinutes && nowMinutes < wakeMinutes;
+}
+
+function shouldSkipBecauseAsleep(
+  kind: string,
+  user: {
+    timezone: string;
+    sleepTime: string | null;
+    wakeTime: string | null;
+    weekendSleepTime?: string | null;
+    weekendWakeTime?: string | null;
+  },
+): { skip: boolean; reason?: string } {
+  if (kind === 'followup_check') return { skip: false };
+  if (!user.sleepTime || !user.wakeTime) return { skip: false };
+
+  const nowStr = new Date().toLocaleTimeString('sv-SE', {
+    timeZone: user.timezone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const nowMinutes = timeToMinutes(nowStr);
+
+  const todayInTz = new Date().toLocaleDateString('en-US', { timeZone: user.timezone });
+  const dayOfWeek = new Date(todayInTz).getDay();
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+  const sleepTime = isWeekend && user.weekendSleepTime ? user.weekendSleepTime : user.sleepTime;
+  const wakeTime = isWeekend && user.weekendWakeTime ? user.weekendWakeTime : user.wakeTime;
+
+  const sleepMinutes = timeToMinutes(sleepTime);
+  const wakeMinutes = timeToMinutes(wakeTime);
+
+  if (isUserAsleep(nowMinutes, sleepMinutes, wakeMinutes)) {
+    return { skip: true, reason: `user_asleep (${nowStr}, sleep ${sleepTime}→${wakeTime})` };
+  }
+  return { skip: false };
+}
+
 function resolveFollowupLimit(
   preferences: Record<string, unknown>,
   proactiveKind?: string,
@@ -57,6 +112,15 @@ export function startWorker(): Worker<JobPayload> {
         log.info({ userId, kind }, 'User paused, skipping job');
         wasSkipped = true;
         skipReason = 'user_paused';
+        await logExecution();
+        return;
+      }
+
+      const asleepCheck = shouldSkipBecauseAsleep(kind, user);
+      if (asleepCheck.skip) {
+        log.info({ userId, kind, reason: asleepCheck.reason }, 'Skipping job: user is asleep');
+        wasSkipped = true;
+        skipReason = 'user_asleep';
         await logExecution();
         return;
       }
@@ -138,8 +202,13 @@ export function startWorker(): Worker<JobPayload> {
 
       let proactiveContext = context;
 
+      // Resolve effective kind: if this is a rescheduled job, use the original kind for enrichment
+      const effectiveKind = (typeof job.data.metadata?.originalKind === 'string')
+        ? job.data.metadata.originalKind as string
+        : kind;
+
       // For lesson_session: enrich context with plan details if available
-      if (kind === 'lesson_session' && context) {
+      if (effectiveKind === 'lesson_session' && context) {
         try {
           const parsed = JSON.parse(context) as { planId?: number; subject?: string; topic?: string; planText?: string };
           if (parsed.planId) {
@@ -156,8 +225,7 @@ export function startWorker(): Worker<JobPayload> {
         } catch { /* keep original context */ }
       }
 
-      // For evening_reflection: append today's habits status
-      if (kind === 'evening_reflection') {
+      if (effectiveKind === 'evening_reflection') {
         try {
           const todayDate = new Date().toLocaleDateString('sv-SE', { timeZone: user.timezone });
           const todayLogs = await habitsRepo.getTodayLogs(userId, todayDate);
@@ -170,8 +238,7 @@ export function startWorker(): Worker<JobPayload> {
         } catch { /* ignore habits error */ }
       }
 
-      // For daily_planning: enrich with todos + habits
-      if (kind === 'daily_planning') {
+      if (effectiveKind === 'daily_planning') {
         try {
           const todayDate = new Date().toLocaleDateString('sv-SE', { timeZone: user.timezone });
           const [activeTodos, todayLogs] = await Promise.all([
@@ -190,8 +257,7 @@ export function startWorker(): Worker<JobPayload> {
         }
       }
 
-      // Special handling for weekly digest to provide stats
-      if (kind === 'weekly_digest') {
+      if (effectiveKind === 'weekly_digest') {
         try {
           const msgStats = await messagesRepo.getWeeklyStats(userId);
           const eduStats = await lessonPlansRepo.getWeeklyStats(userId);

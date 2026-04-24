@@ -27,6 +27,7 @@ export async function buildFloatingSubgraph(
     log.info({ userId, contextLen: cached.context.length, entityCount: cached.entityIds.length }, 'Subgraph cache hit');
     return cached;
   }
+  log.info({ userId }, 'Subgraph cache miss');
 
   // 1. Query Expansion
   const expandedQuery = await expandQuery(userId, query, recentMessages);

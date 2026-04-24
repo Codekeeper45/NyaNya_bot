@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gt } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { jobs, type Job } from '../schema.js';
 import { config } from '../../config.js';
@@ -29,7 +29,24 @@ export const jobsRepo = {
     return row;
   },
 
-  // Note: updateStatus, findByUserAndKind, findByBullJobId removed as dead code.
+  async updateStatus(bullJobId: string, status: string): Promise<void> {
+    await db()
+      .update(jobs)
+      .set({ status, processedAt: status === 'processed' || status === 'cancelled' ? new Date() : undefined })
+      .where(eq(jobs.bullJobId, bullJobId));
+  },
+
+  async updateBullJobId(dbId: number, bullJobId: string): Promise<void> {
+    await db().update(jobs).set({ bullJobId }).where(eq(jobs.id, dbId));
+  },
+
+  async findPendingByUser(userId: number): Promise<Job[]> {
+    return db()
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.userId, userId), eq(jobs.status, 'scheduled'), gt(jobs.scheduledAt, new Date())))
+      .orderBy(jobs.scheduledAt);
+  },
 
   async belongsToUser(bullJobId: string, userId: number): Promise<boolean> {
     const result = await db()

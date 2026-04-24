@@ -186,11 +186,14 @@ ${params.activeJobs ? `\n# Активное расписание\n${params.activ
 
 | Что хочет пользователь | Правильный инструмент | НЕВЕРНЫЙ выбор |
 |---|---|---|
-| «напомни через 5 минут» | schedule_reminder | ❌ followup_ask |
-| «напиши мне через час» | schedule_reminder | ❌ followup_ask |
-| «засеки 10 минут» | schedule_reminder | ❌ followup_ask |
+| «напомни через 5 минут» | schedule_reminder(delayMinutes) | ❌ followup_ask |
+| «напомни в 15:00» | schedule_reminder(atTime) | ❌ delayMinutes |
+| «напомни завтра в 9:00» | schedule_reminder(atTime, atDate) | ❌ delayMinutes |
+| «напомни 25 апреля в 10:00» | schedule_reminder(atTime, atDate) | ❌ delayMinutes |
 | «пропусти сегодня обед» | schedule_skip_once | ❌ schedule_repeating_cancel |
 | «перенеси ужин на 19:30 сегодня» | schedule_postpone_today | ❌ schedule_update_routine |
+| «перенеси ужин на завтра в 19:00» | schedule_reschedule | ❌ schedule_postpone_today |
+| «перенеси тренировку на пятницу в 10:00» | schedule_reschedule | ❌ schedule_update_routine |
 | «перенеси обед на 13:00 навсегда» | schedule_update_routine | ❌ schedule_postpone_today |
 | «перенеси обед в среду на 13:30» | schedule_patch_routine | ❌ schedule_update_routine |
 | «напоминай пить воду каждый день в 10:00» | schedule_repeating | ❌ schedule_reminder |
@@ -200,9 +203,10 @@ ${params.activeJobs ? `\n# Активное расписание\n${params.activ
 | «измени текст напоминания» | schedule_repeating_update | ❌ schedule_update_routine |
 
 **Краткие правила:**
-- **schedule_reminder** — разовое напоминание через N минут. Для ЛЮБОГО запроса «напомни/напиши через X».
+- **schedule_reminder** — разовое напоминание. Поддерживает delayMinutes (через X мин) или atTime+atDate (в точно указанное время/дату).
 - **schedule_skip_once** — пропустить ОДИН запуск. Расписание НЕ меняется, завтра как обычно.
-- **schedule_postpone_today** — отложить СЕГОДНЯШНИЙ запуск на другое время. Завтра вернётся обычное расписание. НЕ меняет cron.
+- **schedule_postpone_today** — отложить СЕГОДНЯШНИЙ запуск на другое время СЕГОДНЯ. Завтра вернётся обычное расписание.
+- **schedule_reschedule** — перенести ближайший запуск на ДРУГОЙ ДЕНЬ и/или время. Расписание не меняется, только этот раз.
 - **schedule_update_routine** — изменить рутину (завтрак/обед/ужин/утро/рефлексия) ЦЕЛИКОМ. Перезаписывает все дни.
 - **schedule_patch_routine** — изменить рутину для КОНКРЕТНЫХ дней. Остальные дни не трогает.
 - **schedule_repeating** — создать новое повторяющееся напоминание (cron).
@@ -222,7 +226,7 @@ ${params.activeJobs ? `\n# Активное расписание\n${params.activ
 
 **ОБЯЗАТЕЛЬНЫЙ порядок при отмене или пропуске напоминания:**
 1. Вызови schedule_list — посмотри реальный список, найди нужный schedulerId
-2. Вызови schedule_repeating_cancel(schedulerId) ИЛИ schedule_skip_once(schedulerId) ИЛИ schedule_postpone_today(schedulerId, newTime)
+2. Вызови нужный инструмент: schedule_repeating_cancel / schedule_skip_once / schedule_postpone_today / schedule_reschedule
 3. Вызови schedule_list снова — убедись что запись исчезла / помечена skipNext
 4. Только после шага 3 сообщи пользователю что всё готово
 НИКОГДА не говори "отменил(а)" до выполнения всех 4 шагов.

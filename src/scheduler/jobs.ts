@@ -29,9 +29,8 @@ export interface JobPayload {
 }
 
 export async function scheduleJob(payload: JobPayload, delayMs: number): Promise<string> {
-  // DB first to avoid orphaned BullMQ jobs if DB fails
   const scheduledAt = new Date(Date.now() + delayMs);
-  await jobsRepo.create({
+  const dbRow = await jobsRepo.create({
     userId: payload.userId,
     kind: payload.kind,
     payload: payload as unknown as Record<string, unknown>,
@@ -41,6 +40,10 @@ export async function scheduleJob(payload: JobPayload, delayMs: number): Promise
 
   const job = await opekuQueue.add(payload.kind, payload, { delay: delayMs });
   const jobId = job.id ?? '';
+
+  if (jobId) {
+    await jobsRepo.updateBullJobId(dbRow.id, jobId);
+  }
 
   log.info({ userId: payload.userId, kind: payload.kind, delayMs, jobId }, 'Job scheduled');
   return jobId;
