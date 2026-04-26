@@ -10,6 +10,7 @@ import { clearLastContext } from '../../agent/orchestrator.js';
 import { VOICE_PROFILES, validateVoiceName, type VoiceGender } from '../../voice/tts.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
+import { formatWhoContinuationPrefix, formatWhoFacts } from './who-format.js';
 
 const log = createChildLogger('commands');
 
@@ -25,73 +26,6 @@ function markPending(userId: number): void {
 }
 function clearPending(userId: number): void {
   pendingActions.delete(userId);
-}
-
-/**
- * Categorize an entity based on its name/description heuristics.
- */
-function categorizeEntity(name: string, description: string): string {
-  const text = (name + ' ' + description).toLowerCase();
-  if (/имя|nickname|ник|зовут|name/.test(text)) return '👤 Личное';
-  if (/город|страна|жив[еу]т|адрес|место|location|city|country/.test(text)) return '📍 Место';
-  if (/работа|профессия|компани|должност|job|work|career|company/.test(text)) return '💼 Работа';
-  if (/хобби|интерес|любит|увлека|hobby|interest|passion/.test(text)) return '🎯 Интересы';
-  if (/семья|родител|жена|муж|дети|брат|сестра|father|mother|family|wife|husband|child/.test(text)) return '👨‍👩‍👧‍👦 Семья';
-  if (/образовани|учеба|школ|университет|education|university|school|degree/.test(text)) return '🎓 Образование';
-  if (/здоровье|болезн|врач|лечени|health|doctor|medicine/.test(text)) return '🏥 Здоровье';
-  return '📌 Другое';
-}
-
-/**
- * Format entities and relationships into beautiful Markdown chunks.
- */
-function formatWhoFacts(entities: Array<{ name: string; description: string }>, relationships: Array<{ sourceName: string; description: string; targetName: string }>): string[] {
-  // Group entities by category
-  const groups = new Map<string, Array<{ name: string; description: string }>>();
-  for (const e of entities) {
-    const cat = categorizeEntity(e.name, e.description);
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat)!.push(e);
-  }
-
-  // Sort categories and entities within
-  const sortedCats = Array.from(groups.keys()).sort();
-  for (const cat of sortedCats) {
-    groups.get(cat)!.sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  const lines: string[] = [];
-
-  // Header
-  lines.push('🧠 *Вот что я помню о тебе:*');
-  lines.push('');
-
-  // Entities by category
-  let factNum = 1;
-  for (const cat of sortedCats) {
-    lines.push(`${cat}`);
-    for (const e of groups.get(cat)!) {
-      lines.push(`${factNum}. *${e.name}*: ${e.description}`);
-      factNum++;
-    }
-    lines.push('');
-  }
-
-  // Relationships
-  if (relationships.length > 0) {
-    lines.push('🔗 *Связи:*');
-    let relNum = 1;
-    for (const r of relationships.slice(0, 30)) {
-      lines.push(`${relNum}. *${r.sourceName}* → _${r.description}_ → *${r.targetName}*`);
-      relNum++;
-    }
-    lines.push('');
-  }
-
-  // Footer
-  lines.push(`_Всего фактов: ${entities.length}, связей: ${relationships.length}_`);
-
-  return lines;
 }
 
 /**
@@ -342,8 +276,8 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       const messages = splitIntoMessages(lines, 3800);
 
       for (let i = 0; i < messages.length; i++) {
-        const prefix = i === 0 ? '' : `_(продолжение ${i + 1}/${messages.length})_\n\n`;
-        await ctx.reply(prefix + messages[i], { parse_mode: 'Markdown' });
+        const prefix = formatWhoContinuationPrefix(i, messages.length);
+        await ctx.reply(prefix + messages[i], { parse_mode: 'HTML' });
       }
     } catch (err) {
       log.error({ err, userId: ctx.dbUser.id }, '/who retrieveAllRaw failed');
