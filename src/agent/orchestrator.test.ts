@@ -29,6 +29,7 @@ vi.mock('./prompts/proactive.js', () => ({
 vi.mock('../db/repos/messages.js', () => ({
   messagesRepo: {
     getRecent: vi.fn(async () => []),
+    getRecentConversation: vi.fn(async () => []),
     create: vi.fn(async () => ({})),
   },
 }));
@@ -65,6 +66,7 @@ import { runOrchestrator } from './orchestrator.js';
 const mockGenerateText = generateText as ReturnType<typeof vi.fn>;
 const mockSendMessage = bot.api.sendMessage as ReturnType<typeof vi.fn>;
 const mockMessagesCreate = messagesRepo.create as ReturnType<typeof vi.fn>;
+const mockGetRecentConversation = messagesRepo.getRecentConversation as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -100,5 +102,23 @@ describe('runOrchestrator timeout behavior', () => {
       role: 'assistant',
       source: 'text',
     }));
+  });
+
+  it('loads conversation history without synthetic memory_save facts', async () => {
+    mockGenerateText.mockResolvedValueOnce({ text: '', toolCalls: [], toolResults: [], steps: [] });
+
+    await runOrchestrator({
+      userId: 1,
+      telegramUserId: 2,
+      telegramChatId: 3,
+      userName: 'Emir',
+      userTimezone: 'Asia/Almaty',
+      mode: 'reactive',
+      userMessage: 'Расскажи, что ты помнишь про мои рабочие проекты',
+      preferences: {},
+      onboardingComplete: true,
+    });
+
+    expect(mockGetRecentConversation).toHaveBeenCalledWith(1, 20);
   });
 });

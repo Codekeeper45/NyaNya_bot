@@ -1,6 +1,6 @@
-import { eq, sql, desc } from 'drizzle-orm';
+import { and, eq, sql, desc } from 'drizzle-orm';
 import { getDb } from '../client.js';
-import { graphEntityUsages } from '../schema.js';
+import { graphEntities, graphEntityUsages, messages } from '../schema.js';
 import { config } from '../../config.js';
 import { createChildLogger } from '../../lib/logger.js';
 
@@ -12,6 +12,20 @@ function db() {
 
 export const graphEntityUsagesRepo = {
   async recordUsage(userId: number, entityId: string, messageId: number): Promise<void> {
+    const [entity] = await db()
+      .select({ id: graphEntities.id })
+      .from(graphEntities)
+      .where(and(eq(graphEntities.userId, userId), eq(graphEntities.id, entityId)))
+      .limit(1);
+    const [message] = await db()
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.userId, userId), eq(messages.id, messageId)))
+      .limit(1);
+    if (!entity || !message) {
+      throw new Error('Cross-user graph usage rejected');
+    }
+
     await db()
       .insert(graphEntityUsages)
       .values({ userId, entityId, messageId })
@@ -40,15 +54,21 @@ export const graphEntityUsagesRepo = {
   },
 
   async findLastUsedWithin(userId: number, minutes: number): Promise<string[]> {
+    const safeMinutes = Math.max(1, Math.floor(minutes));
     const rows = await db()
       .select({ entityId: graphEntityUsages.entityId })
       .from(graphEntityUsages)
-      .where(
+      .where(and(
         eq(graphEntityUsages.userId, userId),
-        sql`${graphEntityUsages.usedAt} > NOW() - interval '${sql.raw(String(minutes))} minutes'`,
-      )
+        sql`${graphEntityUsages.usedAt} > NOW() - (${safeMinutes} * interval '1 minute')`,
+      ))
       .groupBy(graphEntityUsages.entityId);
 
     return rows.map(r => r.entityId);
+  },
+
+  async deleteAllForUser(userId: number): Promise<void> {
+    await db().delete(graphEntityUsages).where(eq(graphEntityUsages.userId, userId));
+    log.info({ userId }, 'Deleted all entity usages for user');
   },
 };

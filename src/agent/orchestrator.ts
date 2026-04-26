@@ -19,6 +19,10 @@ const lastContextMap = new Map<number, string>();
 const ORCHESTRATOR_TIMEOUT_MS = 600_000;
 const ORCHESTRATOR_TIMEOUT_TEXT = 'Извини, запрос получился слишком объёмным. Я сократила исследование и готова ответить точнее, если сузим тему.';
 
+export function clearLastContext(userId: number): void {
+  lastContextMap.delete(userId);
+}
+
 /**
  * Some models (e.g. gemma) output tool calls as raw text using special tokens
  * like `message_send_text{text:<|"|>...<|"|>}<tool_call|>` instead of structured calls.
@@ -83,7 +87,7 @@ export interface OrchestratorInput {
 
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   // 1. Load recent message history from Postgres
-  const recentMessages = await messagesRepo.getRecent(input.userId, 20);
+  const recentMessages = await messagesRepo.getRecentConversation(input.userId, 20);
   const messageHistory: ModelMessage[] = [...recentMessages].reverse().map(m => ({
     role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
     content: m.content,

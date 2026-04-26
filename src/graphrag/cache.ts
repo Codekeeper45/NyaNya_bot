@@ -88,9 +88,19 @@ export function isSimilarToRecentQuery(userId: number, embedding: number[]): boo
   return sim > 0.92;
 }
 
+export function getLastQuery(userId: number): { text: string; embedding: number[] } | undefined {
+  return lastQueryCache.get(String(userId));
+}
+
 /** Update last query for dedup tracking */
 export function recordLastQuery(userId: number, text: string, embedding: number[]): void {
   lastQueryCache.set(String(userId), { text, embedding });
+}
+
+export function clearGraphRagCaches(): void {
+  embeddingCache.clear();
+  contextCache.clear();
+  lastQueryCache.clear();
 }
 
 export { log };

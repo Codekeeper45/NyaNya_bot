@@ -3,11 +3,20 @@ import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphEntityUsagesRepo } from '../db/repos/graph_entity_usages.js';
 import { expandQuery } from './query-expansion.js';
 import { embedText } from './embeddings.js';
-import { contextCache, isSimilarToRecentQuery, recordLastQuery } from './cache.js';
+import { contextCache, getLastQuery, isSimilarToRecentQuery, recordLastQuery } from './cache.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('graphrag:subgraph');
 const CONTEXT_BUDGET = 1500; // chars
+const MIN_ENTITY_FINAL_SCORE = 0.05;
+
+function normalizeQuery(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
+}
+
+function contextCacheKey(userId: number, query: string): string {
+  return `${userId}:${normalizeQuery(query)}`;
+}
 
 export interface SubgraphResult {
   context: string;
@@ -20,8 +29,13 @@ export async function buildFloatingSubgraph(
   recentMessages: unknown[],
   _currentMessageId: number,
 ): Promise<SubgraphResult> {
-  // 0. Check context cache first (fast path)
-  const cacheKey = String(userId);
+  // 1. Query Expansion
+  const expandedQuery = await expandQuery(userId, query, recentMessages);
+
+  // 2. Get seed entities from expanded query
+  const queryEmbedding = await embedText(expandedQuery);
+
+  const cacheKey = contextCacheKey(userId, query);
   const cached = contextCache.get(cacheKey);
   if (cached) {
     log.info({ userId, contextLen: cached.context.length, entityCount: cached.entityIds.length }, 'Subgraph cache hit');
@@ -29,16 +43,15 @@ export async function buildFloatingSubgraph(
   }
   log.info({ userId }, 'Subgraph cache miss');
 
-  // 1. Query Expansion
-  const expandedQuery = await expandQuery(userId, query, recentMessages);
-
-  // 2. Get seed entities from expanded query
-  const queryEmbedding = await embedText(expandedQuery);
-
   // 2a. Dedup: if query is very similar to recent one, reuse cached context
   if (isSimilarToRecentQuery(userId, queryEmbedding)) {
-    log.info({ userId }, 'Query similar to recent — skipping subgraph rebuild');
-    return { context: '', entityIds: [] };
+    const lastQuery = getLastQuery(userId);
+    const previousCached = lastQuery ? contextCache.get(contextCacheKey(userId, lastQuery.text)) : undefined;
+    if (previousCached) {
+      log.info({ userId }, 'Query similar to recent — reusing cached subgraph');
+      return previousCached;
+    }
+    log.info({ userId }, 'Query similar to recent but cache unavailable — rebuilding subgraph');
   }
   recordLastQuery(userId, query, queryEmbedding);
 
@@ -86,7 +99,9 @@ export async function buildFloatingSubgraph(
   );
 
   // 8. Filter to subgraph only
-  const subgraphEntities = scoredEntities.filter(e => subgraphEntityIds.includes(e.id));
+  const subgraphEntities = scoredEntities.filter(
+    e => subgraphEntityIds.includes(e.id) && e.finalScore >= MIN_ENTITY_FINAL_SCORE,
+  );
 
   // 9. Sort by finalScore
   subgraphEntities.sort((a, b) => b.finalScore - a.finalScore);
@@ -121,9 +136,12 @@ function formatSubgraphContext(
   let chars = 0;
 
   // Entities first
+  const seenLines = new Set<string>();
   for (const e of entities) {
     const line = `— ${e.name}: ${e.description}`;
+    if (seenLines.has(line)) continue;
     if (chars + line.length > maxChars) break;
+    seenLines.add(line);
     lines.push(line);
     chars += line.length + 1;
   }
@@ -132,7 +150,9 @@ function formatSubgraphContext(
   const topRels = relationships.slice(0, 10);
   for (const r of topRels) {
     const line = `— ${r.sourceName} → ${r.description} → ${r.targetName}`;
+    if (seenLines.has(line)) continue;
     if (chars + line.length > maxChars) break;
+    seenLines.add(line);
     lines.push(line);
     chars += line.length + 1;
   }

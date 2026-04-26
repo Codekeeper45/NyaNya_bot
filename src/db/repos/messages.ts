@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, count } from 'drizzle-orm';
+import { eq, ne, desc, asc, and, gte, gt, count } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { messages, type Message } from '../schema.js';
 import { config } from '../../config.js';
@@ -33,6 +33,24 @@ export const messagesRepo = {
       .from(messages)
       .where(eq(messages.userId, userId))
       .orderBy(desc(messages.createdAt))
+      .limit(limit);
+  },
+
+  async getRecentConversation(userId: number, limit = 20): Promise<Message[]> {
+    return db()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.userId, userId), ne(messages.source, 'memory_save')))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+  },
+
+  async getAfterId(userId: number, afterId: number, limit = 500): Promise<Message[]> {
+    return db()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.userId, userId), gt(messages.id, afterId)))
+      .orderBy(asc(messages.id))
       .limit(limit);
   },
 

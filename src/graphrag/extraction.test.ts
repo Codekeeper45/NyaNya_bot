@@ -42,6 +42,22 @@ describe('extractTriplets', () => {
     expect(result[0]).toEqual({ subject: 'A', predicate: 'B', object: 'C' });
   });
 
+  it('normalizes triplets and filters empty, excessive, and duplicate values', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify([
+        { subject: '  Emir  ', predicate: '  любит  ', object: '  чай  ' },
+        { subject: 'Emir', predicate: 'любит', object: 'чай' },
+        { subject: '', predicate: 'любит', object: 'кофе' },
+        { subject: 'A'.repeat(121), predicate: 'любит', object: 'кофе' },
+        { subject: 'Emir', predicate: 'x'.repeat(201), object: 'кофе' },
+      ]),
+    } as any);
+
+    const result = await extractTriplets('Emir likes tea.');
+
+    expect(result).toEqual([{ subject: 'Emir', predicate: 'любит', object: 'чай' }]);
+  });
+
   it('returns empty array on parse error', async () => {
     vi.mocked(generateText).mockResolvedValue({
       text: 'not valid json',

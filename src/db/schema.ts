@@ -211,7 +211,7 @@ export const graphEntityUsages = pgTable('graph_entity_usages', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull(),
   entityId: uuid('entity_id').references(() => graphEntities.id, { onDelete: 'cascade' }).notNull(),
-  messageId: integer('message_id').references(() => messages.id).notNull(),
+  messageId: integer('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),
   usedAt: timestamp('used_at').defaultNow().notNull(),
 }, (t) => [
   index('idx_entity_usages_user_entity').on(t.userId, t.entityId),

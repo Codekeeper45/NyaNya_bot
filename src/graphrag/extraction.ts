@@ -14,6 +14,9 @@ interface Triplet {
   object: string;
 }
 
+const MAX_ENTITY_TEXT_LENGTH = 120;
+const MAX_PREDICATE_TEXT_LENGTH = 200;
+
 const EXTRACTION_PROMPT = `Извлеки из текста ключевые сущности и связи между ними.
 
 Правила:
@@ -50,9 +53,24 @@ export async function extractTriplets(text: string): Promise<Triplet[]> {
     }
 
     const triplets = JSON.parse(jsonMatch[0]) as Triplet[];
-    const valid = triplets.filter(
-      t => typeof t.subject === 'string' && typeof t.predicate === 'string' && typeof t.object === 'string'
-    );
+    const seen = new Set<string>();
+    const valid: Triplet[] = [];
+    for (const t of triplets) {
+      if (typeof t.subject !== 'string' || typeof t.predicate !== 'string' || typeof t.object !== 'string') continue;
+      const normalized = {
+        subject: t.subject.trim().replace(/\s+/g, ' '),
+        predicate: t.predicate.trim().replace(/\s+/g, ' '),
+        object: t.object.trim().replace(/\s+/g, ' '),
+      };
+      if (!normalized.subject || !normalized.predicate || !normalized.object) continue;
+      if (normalized.subject.length > MAX_ENTITY_TEXT_LENGTH || normalized.object.length > MAX_ENTITY_TEXT_LENGTH) continue;
+      if (normalized.predicate.length > MAX_PREDICATE_TEXT_LENGTH) continue;
+
+      const key = `${normalized.subject.toLowerCase()}\u0000${normalized.predicate.toLowerCase()}\u0000${normalized.object.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      valid.push(normalized);
+    }
 
     log.debug({ count: valid.length }, 'Triplets extracted');
     return valid;

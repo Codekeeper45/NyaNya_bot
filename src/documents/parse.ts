@@ -71,15 +71,20 @@ export async function parseDocument(buffer: Buffer, filename: string, mimeType: 
 }
 
 async function parsePdf(buffer: Buffer, filename: string, mimeType: string): Promise<ParsedDocument> {
-  const pdfParseModule = await import('pdf-parse');
-  const pdfParse = (pdfParseModule as unknown as { default: (buf: Buffer) => Promise<{ text: string; numpages: number }> }).default ?? pdfParseModule;
-  const data = await pdfParse(buffer);
-  return {
-    text: data.text.slice(0, 50000),
-    filename,
-    mimeType,
-    pages: data.numpages,
-  };
+  const { PDFParse } = await import('pdf-parse');
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+
+  try {
+    const data = await parser.getText();
+    return {
+      text: data.text.slice(0, 50000),
+      filename,
+      mimeType,
+      pages: data.total,
+    };
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function parseDocx(buffer: Buffer, filename: string, mimeType: string): Promise<ParsedDocument> {

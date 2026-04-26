@@ -14,7 +14,11 @@ vi.mock('../../db/repos/users.js', () => ({
   usersRepo: { update: vi.fn() },
 }));
 vi.mock('../../db/repos/jobs.js', () => ({
-  jobsRepo: { belongsToUser: vi.fn().mockResolvedValue(true) },
+  jobsRepo: {
+    belongsToUser: vi.fn().mockResolvedValue(true),
+    updateStatus: vi.fn().mockResolvedValue(undefined),
+    findPendingByUser: vi.fn().mockResolvedValue([]),
+  },
 }));
 vi.mock('../../db/repos/repeating_jobs.js', () => ({
   repeatingJobsRepo: { findByUser: vi.fn().mockResolvedValue([]), upsert: vi.fn(), remove: vi.fn(), findAll: vi.fn().mockResolvedValue([]) },
@@ -118,7 +122,12 @@ describe('schedule_list', () => {
     const result = await tools.schedule_list.execute({}, {} as never);
 
     expect(mockListRepeating).toHaveBeenCalledWith(5);
-    expect(result).toEqual({ reminders: [{ schedulerId: 'user-5-sport', cron: '0 9 * * 1', name: 'Тренировка', skipNext: false }] });
+    expect(result).toEqual({
+      repeating: [{ schedulerId: 'user-5-sport', cron: '0 9 * * 1', name: 'Тренировка', skipNext: false }],
+      oneTime: [],
+      totalRepeating: 1,
+      totalOneTime: 0,
+    });
   });
 });
 

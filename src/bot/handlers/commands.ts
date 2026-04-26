@@ -5,6 +5,8 @@ import { usersRepo } from '../../db/repos/users.js';
 import { messagesRepo } from '../../db/repos/messages.js';
 import { graphIndexStateRepo } from '../../db/repos/graph_index_state.js';
 import { graphRag } from '../../graphrag/index.js';
+import { clearGraphRagCaches } from '../../graphrag/cache.js';
+import { clearLastContext } from '../../agent/orchestrator.js';
 import { VOICE_PROFILES, validateVoiceName, type VoiceGender } from '../../voice/tts.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
@@ -485,11 +487,11 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
 
     await ctx.editMessageText('🗑 Стираю память...');
     try {
-      await Promise.all([
-        messagesRepo.deleteAllForUser(ctx.dbUser.id),
-        graphRag.deleteAllForUser(ctx.dbUser.id),
-        graphIndexStateRepo.deleteForUser(ctx.dbUser.id),
-      ]);
+      await graphRag.deleteAllForUser(ctx.dbUser.id);
+      await messagesRepo.deleteAllForUser(ctx.dbUser.id);
+      await graphIndexStateRepo.deleteForUser(ctx.dbUser.id);
+      clearLastContext(ctx.dbUser.id);
+      clearGraphRagCaches();
 
       await usersRepo.update(ctx.dbUser.id, { preferences: {} });
 

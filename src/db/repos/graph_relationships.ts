@@ -1,4 +1,4 @@
-import { eq, and, or, inArray } from 'drizzle-orm';
+import { eq, and, or, inArray, count } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { graphRelationships, graphEntities } from '../schema.js';
 import type { NewGraphRelationship } from '../schema.js';
@@ -13,6 +13,15 @@ function db() {
 
 export const graphRelationshipsRepo = {
   async create(data: NewGraphRelationship): Promise<string> {
+    const entityIds = [...new Set([data.sourceId, data.targetId])];
+    const owned = await db()
+      .select({ value: count() })
+      .from(graphEntities)
+      .where(and(eq(graphEntities.userId, data.userId), inArray(graphEntities.id, entityIds)));
+    if (Number(owned[0]?.value ?? 0) !== entityIds.length) {
+      throw new Error('Cross-user graph relationship rejected');
+    }
+
     const result = await db()
       .insert(graphRelationships)
       .values(data)

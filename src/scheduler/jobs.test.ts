@@ -10,7 +10,7 @@ vi.mock('./queue.js', () => ({
   },
 }));
 vi.mock('../db/repos/jobs.js', () => ({
-  jobsRepo: { create: vi.fn() },
+  jobsRepo: { create: vi.fn(), updateBullJobId: vi.fn() },
 }));
 vi.mock('../db/repos/repeating_jobs.js', () => ({
   repeatingJobsRepo: { upsert: vi.fn(), remove: vi.fn(), findByUser: vi.fn() },

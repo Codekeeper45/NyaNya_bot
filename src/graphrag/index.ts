@@ -4,6 +4,7 @@ import { graphEntitiesRepo } from '../db/repos/graph_entities.js';
 import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphChunksRepo } from '../db/repos/graph_chunks.js';
 import { graphEntityMentionsRepo } from '../db/repos/graph_entity_mentions.js';
+import { graphEntityUsagesRepo } from '../db/repos/graph_entity_usages.js';
 import { createChildLogger } from '../lib/logger.js';
 import type { GraphEntity } from '../db/schema.js';
 
@@ -91,6 +92,7 @@ export const graphRag = {
   async deleteAllForUser(userId: number): Promise<void> {
     const chunks = await graphChunksRepo.findByUser(userId);
     await graphEntityMentionsRepo.deleteAllForChunks(chunks.map((c: { id: string }) => c.id));
+    await graphEntityUsagesRepo.deleteAllForUser(userId);
     await graphRelationshipsRepo.deleteAllForUser(userId);
     await graphEntitiesRepo.deleteAllForUser(userId);
     await graphChunksRepo.deleteAllForUser(userId);

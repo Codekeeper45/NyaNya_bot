@@ -12,14 +12,33 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('graphrag:indexer');
 
 const ENTITY_DEDUP_DISTANCE = 0.1; // cosine distance; 0.1 ≈ similarity 0.9
+const INDEX_BATCH_SIZE = 500;
+const MAX_ENTITY_DESCRIPTION_LENGTH = 1000;
+
+function compactDescription(...parts: string[]): string {
+  const seen = new Set<string>();
+  const segments: string[] = [];
+  for (const part of parts) {
+    for (const rawSegment of part.split(';')) {
+      const segment = rawSegment.trim().replace(/\s+/g, ' ');
+      if (!segment) continue;
+      const key = segment.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const next = [...segments, segment].join('; ');
+      if (next.length > MAX_ENTITY_DESCRIPTION_LENGTH) return segments.join('; ');
+      segments.push(segment);
+    }
+  }
+  return segments.join('; ');
+}
 
 export async function indexUserMessages(userId: number): Promise<void> {
   const state = await graphIndexStateRepo.get(userId);
   const lastId = state?.lastIndexedMessageId ?? 0;
 
-  // Fetch recent messages not yet indexed
-  const messages = await messagesRepo.getRecent(userId, 1000);
-  const newMessages = messages.filter(m => m.id > lastId);
+  // Fetch the next contiguous batch so old unindexed messages are never skipped.
+  const newMessages = await messagesRepo.getAfterId(userId, lastId, INDEX_BATCH_SIZE);
   if (newMessages.length === 0) {
     log.debug({ userId }, 'No new messages to index');
     return;
@@ -87,7 +106,7 @@ export async function indexUserMessages(userId: number): Promise<void> {
         // Merge description and bump importance
         const existing = await graphEntitiesRepo.findById(entityId);
         if (existing) {
-          const merged = `${existing.description}; ${desc}`;
+          const merged = compactDescription(existing.description, desc);
           const mergedEmb = await embedTexts([merged]);
           await graphEntitiesRepo.updateDescription(entityId, merged, mergedEmb[0]);
           await graphEntitiesRepo.updateUsage(entityId, 1);

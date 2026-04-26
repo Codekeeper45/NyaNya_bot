@@ -41,7 +41,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       },
       body: JSON.stringify({
         model: EMBEDDING_MODEL,
-        input: texts,
+        input: missingTexts,
       }),
     });
 
@@ -55,6 +55,10 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     };
 
     const newEmbeddings = data.data.map(d => d.embedding);
+    if (newEmbeddings.length !== missingTexts.length) {
+      throw new Error(`Embeddings API returned ${newEmbeddings.length} embeddings for ${missingTexts.length} inputs`);
+    }
+
     for (let i = 0; i < missingIndices.length; i++) {
       const idx = missingIndices[i];
       const emb = newEmbeddings[i];

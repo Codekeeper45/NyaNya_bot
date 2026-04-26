@@ -53,6 +53,15 @@ export const graphEntitiesRepo = {
     return result[0];
   },
 
+  async findByIdForUser(userId: number, id: string) {
+    const result = await db()
+      .select()
+      .from(graphEntities)
+      .where(and(eq(graphEntities.userId, userId), eq(graphEntities.id, id)))
+      .limit(1);
+    return result[0];
+  },
+
   async updateDescription(id: string, description: string, embedding: number[]) {
     await db()
       .update(graphEntities)
@@ -95,6 +104,14 @@ export const graphEntitiesRepo = {
       .where(inArray(graphEntities.id, ids));
   },
 
+  async findByIdsForUser(userId: number, ids: string[]) {
+    if (ids.length === 0) return [];
+    return db()
+      .select()
+      .from(graphEntities)
+      .where(and(eq(graphEntities.userId, userId), inArray(graphEntities.id, ids)));
+  },
+
   async findWithScoring(
     userId: number,
     embedding: number[],
@@ -111,6 +128,12 @@ export const graphEntitiesRepo = {
     finalScore: number;
   }>> {
     const embeddingJson = JSON.stringify(embedding);
+    const distanceExpr = sql<number>`${graphEntities.embedding} <=> ${embeddingJson}::vector(1536)`;
+    const finalScoreExpr = sql<number>`
+      ((1 - (${distanceExpr})) * (${graphEntities.importanceScore} / 100.0))
+      - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
+      - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.01, 0.5)
+    `;
 
     // Build where clause
     let whereClause = eq(graphEntities.userId, userId);
@@ -123,19 +146,15 @@ export const graphEntitiesRepo = {
         id: graphEntities.id,
         name: graphEntities.name,
         description: graphEntities.description,
-        distance: sql<number>`${graphEntities.embedding} <=> ${embeddingJson}::vector(1536)`,
+        distance: distanceExpr,
         importanceScore: graphEntities.importanceScore,
         lastUsedAt: graphEntities.lastUsedAt,
         useCount: graphEntities.useCount,
-        finalScore: sql<number>`
-          ((1 - (${graphEntities.embedding} <=> ${embeddingJson}::vector(1536))) * (${graphEntities.importanceScore} / 100.0))
-          - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
-          - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.01, 0.5)
-        `,
+        finalScore: finalScoreExpr,
       })
       .from(graphEntities)
       .where(whereClause)
-      .orderBy(sql`${graphEntities.embedding} <=> ${embeddingJson}::vector(1536) ASC`)
+      .orderBy(sql`${finalScoreExpr} DESC`, sql`${distanceExpr} ASC`)
       .limit(limit);
   },
 };

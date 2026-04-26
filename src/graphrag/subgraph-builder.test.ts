@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { contextCache, lastQueryCache, embeddingCache } from './cache.js';
+import { contextCache, lastQueryCache, embeddingCache, recordLastQuery } from './cache.js';
 
 vi.mock('/src/db/repos/graph_entities.js', () => ({
   graphEntitiesRepo: {
@@ -36,6 +36,7 @@ import { embedText } from './embeddings.js';
 
 describe('buildFloatingSubgraph', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     contextCache.clear();
     lastQueryCache.clear();
     embeddingCache.clear();
@@ -97,5 +98,78 @@ describe('buildFloatingSubgraph', () => {
     const result = await buildFloatingSubgraph(1, 'query', [], 999);
 
     expect(result.context.length).toBeLessThanOrEqual(1500);
+  });
+
+  it('does not reuse cached context for a different query from the same user', async () => {
+    (expandQuery as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('работа')
+      .mockResolvedValueOnce('здоровье');
+    (embedText as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([1, 0])
+      .mockResolvedValueOnce([0, 1]);
+
+    (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ id: 'work', name: 'Работа', description: 'Проекты', finalScore: 0.9 }])
+      .mockResolvedValueOnce([{ id: 'work', name: 'Работа', description: 'Проекты', finalScore: 0.9 }])
+      .mockResolvedValueOnce([{ id: 'health', name: 'Здоровье', description: 'Сон', finalScore: 0.9 }])
+      .mockResolvedValueOnce([{ id: 'health', name: 'Здоровье', description: 'Сон', finalScore: 0.9 }]);
+    (graphEntityUsagesRepo.findRecentForUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const first = await buildFloatingSubgraph(1, 'что с работой', [], 1);
+    const second = await buildFloatingSubgraph(1, 'что со здоровьем', [], 2);
+
+    expect(first.context).toContain('Работа: Проекты');
+    expect(second.context).toContain('Здоровье: Сон');
+    expect(second.context).not.toContain('Работа: Проекты');
+  });
+
+  it('rebuilds similar queries when no cached context is available', async () => {
+    recordLastQuery(1, 'что с работой', [0.1, 0.2]);
+    (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('что с работой');
+    (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);
+    (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'work', name: 'Работа', description: 'Проекты', finalScore: 0.9 },
+    ]);
+    (graphEntityUsagesRepo.findRecentForUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const result = await buildFloatingSubgraph(1, 'как дела с работой', [], 3);
+
+    expect(result.context).toContain('Работа: Проекты');
+  });
+
+  it('does not include entities below the relevance threshold', async () => {
+    (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('не связанный запрос');
+    (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);
+    (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'weak', name: 'Случайный факт', description: 'Нерелевантная деталь', finalScore: 0.01 },
+    ]);
+    (graphEntityUsagesRepo.findRecentForUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const result = await buildFloatingSubgraph(1, 'не связанный запрос', [], 4);
+
+    expect(result.context).toBe('');
+    expect(result.entityIds).toEqual([]);
+  });
+
+  it('deduplicates repeated context lines before applying the context budget', async () => {
+    (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('работа');
+    (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);
+    (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'e1', name: 'Работа', description: 'Проекты', finalScore: 0.9 },
+      { id: 'e2', name: 'Работа', description: 'Проекты', finalScore: 0.8 },
+    ]);
+    (graphEntityUsagesRepo.findRecentForUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { sourceId: 'e1', sourceName: 'Эмир', targetId: 'e2', targetName: 'Работа', description: 'занимается', weight: 1, hop: 1 },
+      { sourceId: 'e1', sourceName: 'Эмир', targetId: 'e2', targetName: 'Работа', description: 'занимается', weight: 1, hop: 1 },
+    ]);
+
+    const result = await buildFloatingSubgraph(1, 'работа', [], 5);
+
+    expect(result.context.match(/Работа: Проекты/g)).toHaveLength(1);
+    expect(result.context.match(/Эмир → занимается → Работа/g)).toHaveLength(1);
   });
 });
