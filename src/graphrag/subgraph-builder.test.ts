@@ -151,7 +151,7 @@ describe('buildFloatingSubgraph', () => {
     expect(result.context).toContain('Работа: Проекты');
   });
 
-  it('includes low-score entities that are in the subgraph', async () => {
+  it('filters low-score entities and their relationships from unrelated queries', async () => {
     (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('не связанный запрос');
     (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);
     (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
@@ -161,13 +161,14 @@ describe('buildFloatingSubgraph', () => {
       { id: 'weak', name: 'Случайный факт', description: 'Нерелевантная деталь', finalScore: -0.3 },
     ]);
     (graphEntityUsagesRepo.findRecentForUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { sourceId: 'weak', sourceName: 'Случайный факт', targetId: 'other', targetName: 'Другая деталь', description: 'связан с', weight: 1, hop: 1 },
+    ]);
 
     const result = await buildFloatingSubgraph(1, 'не связанный запрос', [], 4);
 
-    // Subgraph entities are included regardless of low finalScore — ordering handles relevance
-    expect(result.context).toContain('Случайный факт: Нерелевантная деталь');
-    expect(result.entityIds).toContain('weak');
+    expect(result.context).toBe('');
+    expect(result.entityIds).toEqual([]);
   });
 
   it('deduplicates repeated context lines before applying the context budget', async () => {

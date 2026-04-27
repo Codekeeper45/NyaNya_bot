@@ -8,7 +8,7 @@ import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('graphrag:subgraph');
 const CONTEXT_BUDGET = 1500; // chars
-const MIN_ENTITY_FINAL_SCORE = -1.0; // allow all subgraph entities; scoring handles ordering
+const MIN_ENTITY_FINAL_SCORE = 0.05;
 
 function normalizeQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
@@ -99,12 +99,16 @@ export async function buildFloatingSubgraph(
 
   // 8. Filter by minimum score
   const subgraphEntities = scoredEntities.filter(e => e.finalScore >= MIN_ENTITY_FINAL_SCORE);
+  const includedEntityIds = new Set(subgraphEntities.map(e => e.id));
+  const includedRelationships = neighbors.filter(r =>
+    includedEntityIds.has(r.sourceId) && includedEntityIds.has(r.targetId),
+  );
 
   // 9. Sort by finalScore
   subgraphEntities.sort((a, b) => b.finalScore - a.finalScore);
 
   // 10. Format with budget
-  const context = formatSubgraphContext(subgraphEntities, neighbors, CONTEXT_BUDGET);
+  const context = formatSubgraphContext(subgraphEntities, includedRelationships, CONTEXT_BUDGET);
 
   log.info({
     userId,

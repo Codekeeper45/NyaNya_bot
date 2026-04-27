@@ -132,7 +132,6 @@ export const graphEntitiesRepo = {
     const finalScoreExpr = sql<number>`
       ((1 - (${distanceExpr})) * (${graphEntities.importanceScore} / 100.0))
       - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
-      - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.001, 0.1)
     `;
 
     // Build where clause
@@ -178,7 +177,6 @@ export const graphEntitiesRepo = {
     const finalScoreExpr = sql<number>`
       ((1 - (${distanceExpr})) * (${graphEntities.importanceScore} / 100.0))
       - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
-      - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.001, 0.1)
     `;
     return db()
       .select({

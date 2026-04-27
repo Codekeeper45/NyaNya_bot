@@ -60,6 +60,7 @@ vi.mock('../bot/bot.js', () => ({
 
 vi.mock('./tools/messaging.js', () => ({
   markdownToHtml: vi.fn((text: string) => text),
+  stripAudioTags: vi.fn((text: string) => text),
 }));
 
 import { generateText } from 'ai';
@@ -159,5 +160,67 @@ describe('runOrchestrator timeout behavior', () => {
       role: 'user',
       content: [{ type: 'text', text: 'Что ты помнишь про мои тренировки и спортзал?' }],
     });
+  });
+
+  it('passes only the last five recent messages to strict proactive reminders', async () => {
+    mockGetRecentConversation.mockResolvedValueOnce([
+      { role: 'user', content: 'сообщение 7' },
+      { role: 'assistant', content: 'сообщение 6' },
+      { role: 'user', content: 'сообщение 5' },
+      { role: 'assistant', content: 'сообщение 4' },
+      { role: 'user', content: 'сообщение 3' },
+      { role: 'assistant', content: 'сообщение 2' },
+      { role: 'user', content: 'сообщение 1' },
+    ]);
+    mockGenerateText.mockResolvedValueOnce({ text: '', toolCalls: [], toolResults: [], steps: [] });
+
+    await runOrchestrator({
+      userId: 1,
+      telegramUserId: 2,
+      telegramChatId: 3,
+      userName: 'Emir',
+      userTimezone: 'Asia/Almaty',
+      mode: 'proactive',
+      proactiveKind: 'custom_reminder',
+      proactiveContext: 'Выпить таблетку',
+      preferences: {},
+      onboardingComplete: true,
+    });
+
+    const call = mockGenerateText.mock.calls[0]?.[0];
+    const serializedMessages = JSON.stringify(call.messages);
+    expect(serializedMessages).toContain('сообщение 7');
+    expect(serializedMessages).toContain('сообщение 6');
+    expect(serializedMessages).toContain('сообщение 5');
+    expect(serializedMessages).not.toContain('сообщение 2');
+    expect(serializedMessages).not.toContain('сообщение 1');
+    expect(call.messages).toContainEqual({
+      role: 'system',
+      content: 'Proactive trigger: custom_reminder: Выпить таблетку',
+    });
+  });
+
+  it('strips leaked reasoning channel tags from fallback text', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: '<|channel>thought\n<channel|>Напомни выпить таблетку.',
+      toolCalls: [],
+      toolResults: [],
+      steps: [],
+    });
+
+    await runOrchestrator({
+      userId: 1,
+      telegramUserId: 2,
+      telegramChatId: 3,
+      userName: 'Emir',
+      userTimezone: 'Asia/Almaty',
+      mode: 'proactive',
+      proactiveKind: 'custom_reminder',
+      proactiveContext: 'Выпить таблетку',
+      preferences: {},
+      onboardingComplete: true,
+    });
+
+    expect(mockSendMessage).toHaveBeenCalledWith(3, 'Напомни выпить таблетку.', { parse_mode: 'HTML' });
   });
 });

@@ -30,6 +30,12 @@ export function clearLastContext(userId: number): void {
  * or returns null if the text is pure tool-call syntax with no useful content.
  */
 function extractCleanText(raw: string): string | null {
+  raw = raw
+    .replace(/<\|channel>thought\s*<channel\|>/gi, '')
+    .replace(/<\|channel>[^\n]*\n?/gi, '')
+    .replace(/<channel\|>/gi, '')
+    .trim();
+
   // Try to extract text from gemma-style: message_send_text{text:<|"|>CONTENT<|"|>}
   const gemmaMatch = raw.match(/message_send_(?:text|voice)\{[^}]*?text[:\s]*<\|"\|>([\s\S]*?)<\|"\|>/);
   if (gemmaMatch?.[1]?.trim()) return gemmaMatch[1].trim();
@@ -88,7 +94,10 @@ export interface OrchestratorInput {
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   // 1. Load recent message history from Postgres
   const recentMessages = await messagesRepo.getRecentConversation(input.userId, 20);
-  const messageHistory: ModelMessage[] = [...recentMessages].reverse().map(m => ({
+  const strictProactiveReminder = input.mode === 'proactive'
+    && (input.proactiveKind === 'meal_reminder' || input.proactiveKind === 'custom_reminder');
+  const historyWindow = strictProactiveReminder ? recentMessages.slice(0, 5) : recentMessages;
+  const messageHistory: ModelMessage[] = [...historyWindow].reverse().map(m => ({
     role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
     content: m.content,
   }));
