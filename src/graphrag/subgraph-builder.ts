@@ -1,6 +1,7 @@
 import { graphEntitiesRepo } from '../db/repos/graph_entities.js';
 import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphEntityUsagesRepo } from '../db/repos/graph_entity_usages.js';
+import { graphFactsRepo } from '../db/repos/graph_facts.js';
 import { expandQuery } from './query-expansion.js';
 import { embedText } from './embeddings.js';
 import { contextCache, getLastQuery, isSimilarToRecentQuery, recordLastQuery } from './cache.js';
@@ -9,6 +10,7 @@ import { createChildLogger } from '../lib/logger.js';
 const log = createChildLogger('graphrag:subgraph');
 const CONTEXT_BUDGET = 1500; // chars
 const MIN_ENTITY_FINAL_SCORE = 0.05;
+const MAX_FACT_DISTANCE = 0.45;
 
 function normalizeQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
@@ -63,6 +65,8 @@ export async function buildFloatingSubgraph(
   );
 
   const seedIds = seedEntities.map(e => e.id);
+  const relevantFacts = (await graphFactsRepo.searchSimilar(userId, queryEmbedding, 5))
+    .filter(f => f.distance <= MAX_FACT_DISTANCE);
 
   // 3. Get history entities (last 5 messages)
   const historyEntityIds = await graphEntityUsagesRepo.findRecentForUser(userId, 5);
@@ -108,13 +112,14 @@ export async function buildFloatingSubgraph(
   subgraphEntities.sort((a, b) => b.finalScore - a.finalScore);
 
   // 10. Format with budget
-  const context = formatSubgraphContext(subgraphEntities, includedRelationships, CONTEXT_BUDGET);
+  const context = formatSubgraphContext(relevantFacts, subgraphEntities, includedRelationships, CONTEXT_BUDGET);
 
   log.info({
     userId,
     seedCount: seedEntities.length,
     neighborCount: neighbors.length,
     subgraphEntityCount: subgraphEntities.length,
+    factCount: relevantFacts.length,
     contextLen: context.length,
   }, 'Subgraph built');
 
@@ -129,6 +134,7 @@ export async function buildFloatingSubgraph(
 }
 
 function formatSubgraphContext(
+  facts: Array<{ statement: string }>,
   entities: Array<{ name: string; description: string }>,
   relationships: Array<{ sourceName: string; description: string; targetName: string }>,
   maxChars: number,
@@ -138,6 +144,15 @@ function formatSubgraphContext(
 
   // Entities first
   const seenLines = new Set<string>();
+  for (const f of facts) {
+    const line = `— Факт: ${f.statement}`;
+    if (seenLines.has(line)) continue;
+    if (chars + line.length > maxChars) break;
+    seenLines.add(line);
+    lines.push(line);
+    chars += line.length + 1;
+  }
+
   for (const e of entities) {
     const line = `— ${e.name}: ${e.description}`;
     if (seenLines.has(line)) continue;

@@ -20,6 +20,12 @@ vi.mock('/src/db/repos/graph_entity_usages.js', () => ({
   },
 }));
 
+vi.mock('/src/db/repos/graph_facts.js', () => ({
+  graphFactsRepo: {
+    searchSimilar: vi.fn(),
+  },
+}));
+
 vi.mock('./query-expansion.js', () => ({
   expandQuery: vi.fn(),
 }));
@@ -32,6 +38,7 @@ import { buildFloatingSubgraph } from './subgraph-builder.js';
 import { graphEntitiesRepo } from '/src/db/repos/graph_entities.js';
 import { graphRelationshipsRepo } from '/src/db/repos/graph_relationships.js';
 import { graphEntityUsagesRepo } from '/src/db/repos/graph_entity_usages.js';
+import { graphFactsRepo } from '/src/db/repos/graph_facts.js';
 import { expandQuery } from './query-expansion.js';
 import { embedText } from './embeddings.js';
 
@@ -41,6 +48,7 @@ describe('buildFloatingSubgraph', () => {
     contextCache.clear();
     lastQueryCache.clear();
     embeddingCache.clear();
+    (graphFactsRepo.searchSimilar as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
   it('returns formatted context with entities and relationships', async () => {
     (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('расскажи обо мне Emir');
@@ -192,5 +200,28 @@ describe('buildFloatingSubgraph', () => {
 
     expect(result.context.match(/Работа: Проекты/g)).toHaveLength(1);
     expect(result.context.match(/Эмир → занимается → Работа/g)).toHaveLength(1);
+  });
+
+  it('includes close canonical facts before entity context', async () => {
+    (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('когда пить итоприд');
+    (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);
+    (graphFactsRepo.searchSimilar as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'fact-1', statement: 'Эмир принимает Итоприд утром', distance: 0.2 },
+      { id: 'fact-2', statement: 'Эмир любит чай', distance: 0.8 },
+    ]);
+    (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'med', name: 'Итоприд', description: 'лекарство', finalScore: 0.9 },
+    ]);
+    (graphEntitiesRepo.findByIdsWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'med', name: 'Итоприд', description: 'лекарство', finalScore: 0.9 },
+    ]);
+    (graphEntityUsagesRepo.findRecentForUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (graphRelationshipsRepo.getNeighborsMultiHop as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const result = await buildFloatingSubgraph(1, 'когда пить итоприд', [], 6);
+
+    expect(result.context).toMatch(/^— Факт: Эмир принимает Итоприд утром/);
+    expect(result.context).toContain('Итоприд: лекарство');
+    expect(result.context).not.toContain('любит чай');
   });
 });

@@ -14,6 +14,15 @@ interface Triplet {
   object: string;
 }
 
+export interface KnownEntityForExtraction {
+  name: string;
+  aliases: string[];
+}
+
+interface ExtractTripletsOptions {
+  knownEntities?: KnownEntityForExtraction[];
+}
+
 const MAX_ENTITY_TEXT_LENGTH = 120;
 const MAX_PREDICATE_TEXT_LENGTH = 200;
 
@@ -32,7 +41,24 @@ const EXTRACTION_PROMPT = `Извлеки из текста ключевые с�
 
 Если сущностей нет — верни пустой массив [].`;
 
-export async function extractTriplets(text: string): Promise<Triplet[]> {
+function buildExtractionPrompt(knownEntities: KnownEntityForExtraction[] = []): string {
+  const known = knownEntities
+    .slice(0, 20)
+    .map(e => {
+      const aliases = e.aliases.slice(0, 8).join(', ');
+      return aliases ? `- ${e.name} (aliases: ${aliases})` : `- ${e.name}`;
+    })
+    .join('\n');
+
+  if (!known) return EXTRACTION_PROMPT;
+
+  return `${EXTRACTION_PROMPT}
+
+Уже известные сущности пользователя. Если текст говорит об одной из них или её alias, используй canonical name слева, не придумывай новое имя:
+${known}`;
+}
+
+export async function extractTriplets(text: string, options: ExtractTripletsOptions = {}): Promise<Triplet[]> {
   if (!config.openrouterApiKey) {
     log.warn('OpenRouter key missing, skipping extraction');
     return [];
@@ -41,7 +67,7 @@ export async function extractTriplets(text: string): Promise<Triplet[]> {
   try {
     const { text: raw } = await generateText({
       model: openrouter.chat(EXTRACTION_MODEL),
-      system: EXTRACTION_PROMPT,
+      system: buildExtractionPrompt(options.knownEntities),
       prompt: text.slice(0, 4000), // Limit to avoid token overflow
     });
 

@@ -186,6 +186,38 @@ export const graphEntities = pgTable('graph_entities', {
   index('idx_graph_entities_name').on(t.userId, t.name),
 ]);
 
+export const graphEntityAliases = pgTable('graph_entity_aliases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  entityId: uuid('entity_id').references(() => graphEntities.id, { onDelete: 'cascade' }).notNull(),
+  alias: varchar('alias', { length: 255 }).notNull(),
+  normalizedAlias: varchar('normalized_alias', { length: 255 }).notNull(),
+  source: varchar('source', { length: 50 }).notNull().default('extracted'),
+  confidence: integer('confidence').notNull().default(100),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  unique('graph_entity_aliases_user_normalized_unique').on(t.userId, t.normalizedAlias),
+  index('idx_graph_entity_aliases_entity').on(t.entityId),
+]);
+
+export const graphFacts = pgTable('graph_facts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  subjectId: uuid('subject_id').references(() => graphEntities.id, { onDelete: 'cascade' }).notNull(),
+  predicate: varchar('predicate', { length: 255 }).notNull(),
+  objectId: uuid('object_id').references(() => graphEntities.id, { onDelete: 'set null' }),
+  objectText: text('object_text').notNull(),
+  statement: text('statement').notNull(),
+  factKey: varchar('fact_key', { length: 700 }).notNull(),
+  embedding: vector1536('embedding').notNull(),
+  confidence: integer('confidence').notNull().default(80),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  unique('graph_facts_user_key_unique').on(t.userId, t.factKey),
+  index('idx_graph_facts_user_subject').on(t.userId, t.subjectId),
+]);
+
 export const graphRelationships = pgTable('graph_relationships', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: integer('user_id').references(() => users.id).notNull(),
@@ -205,6 +237,16 @@ export const graphEntityMentions = pgTable('graph_entity_mentions', {
   chunkId: uuid('chunk_id').references(() => graphChunks.id, { onDelete: 'cascade' }).notNull(),
 }, (t) => [
   unique('entity_chunk_unique').on(t.entityId, t.chunkId),
+]);
+
+export const graphFactSources = pgTable('graph_fact_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  factId: uuid('fact_id').references(() => graphFacts.id, { onDelete: 'cascade' }).notNull(),
+  chunkId: uuid('chunk_id').references(() => graphChunks.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  unique('graph_fact_sources_fact_chunk_unique').on(t.factId, t.chunkId),
+  index('idx_graph_fact_sources_chunk').on(t.chunkId),
 ]);
 
 export const graphEntityUsages = pgTable('graph_entity_usages', {
@@ -244,6 +286,12 @@ export type GraphChunk = typeof graphChunks.$inferSelect;
 export type NewGraphChunk = typeof graphChunks.$inferInsert;
 export type GraphEntity = typeof graphEntities.$inferSelect;
 export type NewGraphEntity = typeof graphEntities.$inferInsert;
+export type GraphEntityAlias = typeof graphEntityAliases.$inferSelect;
+export type NewGraphEntityAlias = typeof graphEntityAliases.$inferInsert;
+export type GraphFact = typeof graphFacts.$inferSelect;
+export type NewGraphFact = typeof graphFacts.$inferInsert;
+export type GraphFactSource = typeof graphFactSources.$inferSelect;
+export type NewGraphFactSource = typeof graphFactSources.$inferInsert;
 export type GraphRelationship = typeof graphRelationships.$inferSelect;
 export type NewGraphRelationship = typeof graphRelationships.$inferInsert;
 export type GraphEntityMention = typeof graphEntityMentions.$inferSelect;

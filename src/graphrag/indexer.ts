@@ -3,34 +3,38 @@ import { extractTriplets } from './extraction.js';
 import { chunkText } from './chunking.js';
 import { graphChunksRepo } from '../db/repos/graph_chunks.js';
 import { graphEntitiesRepo } from '../db/repos/graph_entities.js';
+import { graphEntityAliasesRepo } from '../db/repos/graph_entity_aliases.js';
 import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphEntityMentionsRepo } from '../db/repos/graph_entity_mentions.js';
+import { graphFactsRepo } from '../db/repos/graph_facts.js';
+import { graphFactSourcesRepo } from '../db/repos/graph_fact_sources.js';
 import { graphIndexStateRepo } from '../db/repos/graph_index_state.js';
 import { messagesRepo } from '../db/repos/messages.js';
+import { usersRepo } from '../db/repos/users.js';
+import { normalizeEntityAlias, resolveEntityCandidate } from './entity-resolver.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('graphrag:indexer');
 
-const ENTITY_DEDUP_DISTANCE = 0.1; // cosine distance; 0.1 ≈ similarity 0.9
 const INDEX_BATCH_SIZE = 500;
-const MAX_ENTITY_DESCRIPTION_LENGTH = 1000;
 
-function compactDescription(...parts: string[]): string {
-  const seen = new Set<string>();
-  const segments: string[] = [];
-  for (const part of parts) {
-    for (const rawSegment of part.split(';')) {
-      const segment = rawSegment.trim().replace(/\s+/g, ' ');
-      if (!segment) continue;
-      const key = segment.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const next = [...segments, segment].join('; ');
-      if (next.length > MAX_ENTITY_DESCRIPTION_LENGTH) return segments.join('; ');
-      segments.push(segment);
-    }
+function makeFactKey(subjectId: string, predicate: string, objectId: string): string {
+  return [subjectId, normalizeEntityAlias(predicate), objectId].join('|').slice(0, 700);
+}
+
+async function knownEntitiesForChunk(userId: number, chunkEmbedding: number[]) {
+  const similar = await graphEntitiesRepo.searchSimilar(userId, chunkEmbedding, 20) ?? [];
+  const aliases = await graphEntityAliasesRepo.findByEntityIds(similar.map(e => e.id)) ?? [];
+  const aliasMap = new Map<string, string[]>();
+  for (const alias of aliases) {
+    const list = aliasMap.get(alias.entityId) ?? [];
+    list.push(alias.alias);
+    aliasMap.set(alias.entityId, list);
   }
-  return segments.join('; ');
+  return similar.map(entity => ({
+    name: entity.name,
+    aliases: [...new Set(aliasMap.get(entity.id) ?? [])].slice(0, 8),
+  }));
 }
 
 export async function indexUserMessages(userId: number): Promise<void> {
@@ -45,6 +49,8 @@ export async function indexUserMessages(userId: number): Promise<void> {
   }
 
   log.info({ userId, count: newMessages.length }, 'Indexing messages');
+  const user = await usersRepo.findById(userId);
+  const userName = user?.name ?? 'Пользователь';
 
   // Concatenate into raw text
   const rawText = newMessages
@@ -71,7 +77,8 @@ export async function indexUserMessages(userId: number): Promise<void> {
 
   // Extract triplets per chunk
   for (let i = 0; i < chunks.length; i++) {
-    const triplets = await extractTriplets(chunks[i]);
+    const knownEntities = await knownEntitiesForChunk(userId, chunkEmbeddings[i]);
+    const triplets = await extractTriplets(chunks[i], { knownEntities });
     if (triplets.length === 0) continue;
 
     const entityNames = [...new Set([...triplets.map(t => t.subject), ...triplets.map(t => t.object)])];
@@ -88,65 +95,66 @@ export async function indexUserMessages(userId: number): Promise<void> {
     const descriptions = entityNames.map(n => entityDescMap.get(n) ?? n);
     const entityEmbeddings = await embedTexts(descriptions);
 
-    // Deduplicate and store entities
-    const entityIdMap = new Map<string, string>(); // name -> entityId
+    // Resolve and store canonical entities
+    const entityMap = new Map<string, { id: string; name: string }>(); // extracted name -> canonical entity
 
     for (let j = 0; j < entityNames.length; j++) {
       const name = entityNames[j];
       const desc = descriptions[j];
       const emb = entityEmbeddings[j];
 
-      // Check for duplicates via vector similarity
-      const similar = await graphEntitiesRepo.searchSimilar(userId, emb, 1);
-      const duplicate = similar[0]?.distance != null && similar[0].distance < ENTITY_DEDUP_DISTANCE;
+      const resolved = await resolveEntityCandidate({
+        userId,
+        userName,
+        name,
+        description: desc,
+        embedding: emb,
+      });
 
-      let entityId: string;
-      if (duplicate) {
-        entityId = similar[0].id;
-        // Merge description and bump importance
-        const existing = await graphEntitiesRepo.findById(entityId);
-        if (existing) {
-          const merged = compactDescription(existing.description, desc);
-          const mergedEmb = await embedTexts([merged]);
-          await graphEntitiesRepo.updateDescription(entityId, merged, mergedEmb[0]);
-          await graphEntitiesRepo.updateUsage(entityId, 1);
-          log.debug({ entityId, name }, 'Merged duplicate entity');
-        }
-      } else {
-        entityId = await graphEntitiesRepo.create({
-          userId,
-          name,
-          description: desc,
-          embedding: emb,
-          importanceScore: 10,
-        });
-      }
-
-      entityIdMap.set(name, entityId);
+      entityMap.set(name, { id: resolved.entityId, name: resolved.name });
 
       // Link entity to chunk
-      await graphEntityMentionsRepo.create({ entityId, chunkId: chunkIds[i] });
+      await graphEntityMentionsRepo.create({ entityId: resolved.entityId, chunkId: chunkIds[i] });
     }
 
-    // Store relationships
+    // Store relationships and facts
     for (const triplet of triplets) {
-      const sourceId = entityIdMap.get(triplet.subject);
-      const targetId = entityIdMap.get(triplet.object);
-      if (!sourceId || !targetId) continue;
+      const source = entityMap.get(triplet.subject);
+      const target = entityMap.get(triplet.object);
+      if (!source || !target) continue;
 
       // Skip self-loops
-      if (sourceId === targetId) continue;
+      if (source.id === target.id) continue;
+
+      const statement = `${source.name} ${triplet.predicate} ${target.name}`;
 
       try {
         await graphRelationshipsRepo.create({
           userId,
-          sourceId,
-          targetId,
-          description: `${triplet.subject} ${triplet.predicate} ${triplet.object}`,
+          sourceId: source.id,
+          targetId: target.id,
+          description: statement,
           weight: 1,
         });
       } catch {
         // Ignore duplicate relationship errors
+      }
+
+      const factKey = makeFactKey(source.id, triplet.predicate, target.id);
+      const factEmbedding = await embedTexts([statement]);
+      const factId = await graphFactsRepo.upsert({
+        userId,
+        subjectId: source.id,
+        predicate: triplet.predicate.slice(0, 255),
+        objectId: target.id,
+        objectText: target.name,
+        statement,
+        factKey,
+        embedding: factEmbedding[0],
+        confidence: 80,
+      }) ?? (await graphFactsRepo.findByFactKey(userId, factKey))?.id;
+      if (factId) {
+        await graphFactSourcesRepo.create({ factId, chunkId: chunkIds[i] });
       }
     }
   }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('ai', () => ({
   generateText: vi.fn(),
@@ -10,6 +10,12 @@ vi.mock('../config.js', () => ({
 
 import { generateText } from 'ai';
 import { extractTriplets } from './extraction.js';
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  const { config } = await import('../config.js');
+  (config as any).openrouterApiKey = 'test-key';
+});
 
 describe('extractTriplets', () => {
   it('extracts triplets from JSON array response', async () => {
@@ -65,6 +71,25 @@ describe('extractTriplets', () => {
 
     const result = await extractTriplets('Something.');
     expect(result).toEqual([]);
+  });
+
+  it('includes known canonical entities and aliases in the extraction prompt', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: '[{"subject": "Эмир", "predicate": "работает над", "object": "Opekun"}]',
+    } as any);
+
+    await extractTriplets('Emir works on Opekun.', {
+      knownEntities: [
+        { name: 'Эмир', aliases: ['Emir', 'пользователь'] },
+        { name: 'Opekun', aliases: ['Опекун'] },
+      ],
+    });
+
+    const call = vi.mocked(generateText).mock.calls[0]?.[0] as { system?: string };
+    expect(call.system).toContain('Уже известные сущности');
+    expect(call.system).toContain('Эмир');
+    expect(call.system).toContain('aliases: Emir, пользователь');
+    expect(call.system).toContain('Opekun');
   });
 
   it('returns empty array when API key missing', async () => {

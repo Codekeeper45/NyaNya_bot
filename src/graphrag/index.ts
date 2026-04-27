@@ -5,6 +5,9 @@ import { graphRelationshipsRepo } from '../db/repos/graph_relationships.js';
 import { graphChunksRepo } from '../db/repos/graph_chunks.js';
 import { graphEntityMentionsRepo } from '../db/repos/graph_entity_mentions.js';
 import { graphEntityUsagesRepo } from '../db/repos/graph_entity_usages.js';
+import { graphEntityAliasesRepo } from '../db/repos/graph_entity_aliases.js';
+import { graphFactsRepo } from '../db/repos/graph_facts.js';
+import { graphFactSourcesRepo } from '../db/repos/graph_fact_sources.js';
 import { createChildLogger } from '../lib/logger.js';
 import type { GraphEntity } from '../db/schema.js';
 
@@ -91,9 +94,13 @@ export const graphRag = {
    */
   async deleteAllForUser(userId: number): Promise<void> {
     const chunks = await graphChunksRepo.findByUser(userId);
-    await graphEntityMentionsRepo.deleteAllForChunks(chunks.map((c: { id: string }) => c.id));
+    const chunkIds = chunks.map((c: { id: string }) => c.id);
+    await graphFactSourcesRepo.deleteAllForChunks(chunkIds);
+    await graphEntityMentionsRepo.deleteAllForChunks(chunkIds);
     await graphEntityUsagesRepo.deleteAllForUser(userId);
     await graphRelationshipsRepo.deleteAllForUser(userId);
+    await graphFactsRepo.deleteAllForUser(userId);
+    await graphEntityAliasesRepo.deleteAllForUser(userId);
     await graphEntitiesRepo.deleteAllForUser(userId);
     await graphChunksRepo.deleteAllForUser(userId);
     log.info({ userId }, 'GraphRAG data deleted');
