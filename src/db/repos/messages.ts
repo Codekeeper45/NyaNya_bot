@@ -1,4 +1,4 @@
-import { eq, ne, desc, asc, and, gte, gt, count } from 'drizzle-orm';
+import { eq, ne, desc, asc, and, gte, gt, count, ilike, or } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { messages, type Message } from '../schema.js';
 import { config } from '../../config.js';
@@ -41,6 +41,38 @@ export const messagesRepo = {
       .select()
       .from(messages)
       .where(and(eq(messages.userId, userId), ne(messages.source, 'memory_save')))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+  },
+
+  async getSavedFacts(userId: number, limit = 100): Promise<Message[]> {
+    return db()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.userId, userId), eq(messages.source, 'memory_save')))
+      .orderBy(asc(messages.createdAt))
+      .limit(limit);
+  },
+
+  async searchSavedFacts(userId: number, query: string, limit = 5): Promise<Message[]> {
+    const terms = query
+      .trim()
+      .split(/\s+/)
+      .filter(term => term.length >= 3)
+      .slice(0, 5);
+
+    const searchClause = terms.length > 0
+      ? or(...terms.map(term => ilike(messages.content, `%${term}%`)))
+      : ilike(messages.content, `%${query.trim()}%`);
+
+    return db()
+      .select()
+      .from(messages)
+      .where(and(
+        eq(messages.userId, userId),
+        eq(messages.source, 'memory_save'),
+        searchClause,
+      ))
       .orderBy(desc(messages.createdAt))
       .limit(limit);
   },

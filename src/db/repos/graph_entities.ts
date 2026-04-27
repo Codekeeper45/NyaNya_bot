@@ -132,7 +132,7 @@ export const graphEntitiesRepo = {
     const finalScoreExpr = sql<number>`
       ((1 - (${distanceExpr})) * (${graphEntities.importanceScore} / 100.0))
       - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
-      - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.01, 0.5)
+      - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.001, 0.1)
     `;
 
     // Build where clause
@@ -156,5 +156,43 @@ export const graphEntitiesRepo = {
       .where(whereClause)
       .orderBy(sql`${finalScoreExpr} DESC`, sql`${distanceExpr} ASC`)
       .limit(limit);
+  },
+
+  async findByIdsWithScoring(
+    userId: number,
+    ids: string[],
+    embedding: number[],
+  ): Promise<Array<{
+    id: string;
+    name: string;
+    description: string;
+    distance: number;
+    importanceScore: number;
+    lastUsedAt: Date | null;
+    useCount: number;
+    finalScore: number;
+  }>> {
+    if (ids.length === 0) return [];
+    const embeddingJson = JSON.stringify(embedding);
+    const distanceExpr = sql<number>`${graphEntities.embedding} <=> ${embeddingJson}::vector(1536)`;
+    const finalScoreExpr = sql<number>`
+      ((1 - (${distanceExpr})) * (${graphEntities.importanceScore} / 100.0))
+      - CASE WHEN NOW() - ${graphEntities.lastUsedAt} < interval '5 minutes' THEN 0.3 ELSE 0 END
+      - LEAST(EXTRACT(EPOCH FROM (NOW() - COALESCE(${graphEntities.lastUsedAt}, ${graphEntities.createdAt}))) / 86400.0 * 0.001, 0.1)
+    `;
+    return db()
+      .select({
+        id: graphEntities.id,
+        name: graphEntities.name,
+        description: graphEntities.description,
+        distance: distanceExpr,
+        importanceScore: graphEntities.importanceScore,
+        lastUsedAt: graphEntities.lastUsedAt,
+        useCount: graphEntities.useCount,
+        finalScore: finalScoreExpr,
+      })
+      .from(graphEntities)
+      .where(and(eq(graphEntities.userId, userId), inArray(graphEntities.id, ids)))
+      .orderBy(sql`${finalScoreExpr} DESC`, sql`${distanceExpr} ASC`);
   },
 };

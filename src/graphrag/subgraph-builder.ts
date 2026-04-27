@@ -8,7 +8,7 @@ import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('graphrag:subgraph');
 const CONTEXT_BUDGET = 1500; // chars
-const MIN_ENTITY_FINAL_SCORE = 0.05;
+const MIN_ENTITY_FINAL_SCORE = -1.0; // allow all subgraph entities; scoring handles ordering
 
 function normalizeQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
@@ -90,18 +90,15 @@ export async function buildFloatingSubgraph(
     ...neighbors.map(n => n.sourceId),
   ])];
 
-  // 7. Score all subgraph entities
-  const scoredEntities = await graphEntitiesRepo.findWithScoring(
+  // 7. Score subgraph entities directly (not global top-N)
+  const scoredEntities = await graphEntitiesRepo.findByIdsWithScoring(
     userId,
+    subgraphEntityIds,
     queryEmbedding,
-    [],
-    40,
   );
 
-  // 8. Filter to subgraph only
-  const subgraphEntities = scoredEntities.filter(
-    e => subgraphEntityIds.includes(e.id) && e.finalScore >= MIN_ENTITY_FINAL_SCORE,
-  );
+  // 8. Filter by minimum score
+  const subgraphEntities = scoredEntities.filter(e => e.finalScore >= MIN_ENTITY_FINAL_SCORE);
 
   // 9. Sort by finalScore
   subgraphEntities.sort((a, b) => b.finalScore - a.finalScore);

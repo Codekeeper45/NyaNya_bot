@@ -38,6 +38,10 @@ vi.mock('../scheduler/jobs.js', () => ({
   listRepeatingJobs: vi.fn(async () => []),
 }));
 
+vi.mock('../graphrag/subgraph-builder.js', () => ({
+  buildFloatingSubgraph: vi.fn(async () => ({ context: '', entityIds: [] })),
+}));
+
 vi.mock('./tools/index.js', () => ({
   allTools: vi.fn(() => ({
     tools: {},
@@ -61,12 +65,14 @@ vi.mock('./tools/messaging.js', () => ({
 import { generateText } from 'ai';
 import { bot } from '../bot/bot.js';
 import { messagesRepo } from '../db/repos/messages.js';
+import { buildFloatingSubgraph } from '../graphrag/subgraph-builder.js';
 import { runOrchestrator } from './orchestrator.js';
 
 const mockGenerateText = generateText as ReturnType<typeof vi.fn>;
 const mockSendMessage = bot.api.sendMessage as ReturnType<typeof vi.fn>;
 const mockMessagesCreate = messagesRepo.create as ReturnType<typeof vi.fn>;
 const mockGetRecentConversation = messagesRepo.getRecentConversation as ReturnType<typeof vi.fn>;
+const mockBuildFloatingSubgraph = buildFloatingSubgraph as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -120,5 +126,36 @@ describe('runOrchestrator timeout behavior', () => {
     });
 
     expect(mockGetRecentConversation).toHaveBeenCalledWith(1, 20);
+  });
+
+  it('passes retrieved memory as system context instead of user-authored text', async () => {
+    mockMessagesCreate.mockResolvedValueOnce({ id: 42 });
+    mockBuildFloatingSubgraph.mockResolvedValueOnce({
+      context: '— Эмир: занимается в Big Nation',
+      entityIds: [],
+    });
+    mockGenerateText.mockResolvedValueOnce({ text: '', toolCalls: [], toolResults: [], steps: [] });
+
+    await runOrchestrator({
+      userId: 1,
+      telegramUserId: 2,
+      telegramChatId: 3,
+      userName: 'Emir',
+      userTimezone: 'Asia/Almaty',
+      mode: 'reactive',
+      userMessage: 'Что ты помнишь про мои тренировки и спортзал?',
+      preferences: {},
+      onboardingComplete: true,
+    });
+
+    const call = mockGenerateText.mock.calls[0]?.[0];
+    expect(call.messages).toContainEqual({
+      role: 'system',
+      content: expect.stringContaining('Релевантный контекст из памяти'),
+    });
+    expect(call.messages.at(-1)).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'Что ты помнишь про мои тренировки и спортзал?' }],
+    });
   });
 });

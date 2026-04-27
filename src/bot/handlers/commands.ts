@@ -10,7 +10,7 @@ import { clearLastContext } from '../../agent/orchestrator.js';
 import { VOICE_PROFILES, validateVoiceName, type VoiceGender } from '../../voice/tts.js';
 import { createChildLogger } from '../../lib/logger.js';
 import { generateAuthUrl, isGoogleOAuthConfigured, isOAuthCallbackUrl, extractCodeFromInput, exchangeCode } from '../../oauth/google.js';
-import { formatWhoContinuationPrefix, formatWhoFacts } from './who-format.js';
+import { formatWhoContinuationPrefix, formatWhoFacts, formatWhoSavedFacts } from './who-format.js';
 
 const log = createChildLogger('commands');
 
@@ -264,15 +264,21 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
     log.info({ userId: ctx.dbUser.id }, '/who command');
 
     try {
-      const raw = await graphRag.retrieveAllRaw(ctx.dbUser.id);
+      const [raw, savedFacts] = await Promise.all([
+        graphRag.retrieveAllRaw(ctx.dbUser.id),
+        messagesRepo.getSavedFacts(ctx.dbUser.id),
+      ]);
       log.info({ userId: ctx.dbUser.id, hasData: !!raw, entityCount: raw?.entities.length ?? 0, relCount: raw?.relationships.length ?? 0 }, '/who retrieveAllRaw result');
 
-      if (!raw || (raw.entities.length === 0 && raw.relationships.length === 0)) {
+      if (savedFacts.length === 0 && (!raw || (raw.entities.length === 0 && raw.relationships.length === 0))) {
         await ctx.reply('Пока ещё мало знаю о тебе. Поговори со мной побольше или запусти /index_memory! 🤗');
         return;
       }
 
-      const lines = formatWhoFacts(raw.entities, raw.relationships);
+      const lines = [
+        ...formatWhoSavedFacts(savedFacts),
+        ...(raw ? formatWhoFacts(raw.entities, raw.relationships) : []),
+      ];
       const messages = splitIntoMessages(lines, 3800);
 
       for (let i = 0; i < messages.length; i++) {

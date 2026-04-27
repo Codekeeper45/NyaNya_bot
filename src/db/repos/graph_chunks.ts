@@ -25,12 +25,13 @@ export const graphChunksRepo = {
     return id;
   },
 
-  async searchSimilar(userId: number, embedding: number[], limit = 5): Promise<Array<{ id: string; content: string; distance: number }>> {
+  async searchSimilar(userId: number, embedding: number[], limit = 5): Promise<Array<{ id: string; content: string; distance: number; createdAt: Date }>> {
     return db()
       .select({
         id: graphChunks.id,
         content: graphChunks.content,
         distance: sql<number>`${graphChunks.embedding} <=> ${JSON.stringify(embedding)}::vector(1536)`,
+        createdAt: graphChunks.createdAt,
       })
       .from(graphChunks)
       .where(eq(graphChunks.userId, userId))

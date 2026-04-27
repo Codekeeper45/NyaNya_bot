@@ -64,6 +64,19 @@ export function formatWhoFacts(entities: Array<{ name: string; description: stri
   return lines;
 }
 
+export function formatWhoSavedFacts(facts: Array<{ content: string; createdAt: Date }>): string[] {
+  if (facts.length === 0) return [];
+
+  const lines: string[] = [];
+  lines.push('💾 <b>Сохранённые факты:</b>');
+  for (const [index, fact] of facts.entries()) {
+    const content = fact.content.replace(/^Факт о пользователе:\s*/i, '').trim();
+    lines.push(`${index + 1}. ${escapeHtml(content)}`);
+  }
+  lines.push('');
+  return lines;
+}
+
 export function formatWhoContinuationPrefix(index: number, total: number): string {
   return index === 0 ? '' : `<i>(продолжение ${index + 1}/${total})</i>\n\n`;
 }

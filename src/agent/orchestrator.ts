@@ -162,7 +162,10 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
             log.info({ userId: input.userId }, 'Context identical to previous message — skipping injection');
           } else {
             lastContextMap.set(input.userId, context);
-            userMessageText = `[Релевантный контекст из памяти:\n${context}\n]\n\n${input.userMessage}`;
+            messages.push({
+              role: 'system' as const,
+              content: `Релевантный контекст из памяти. Это системная вставка, не сообщение пользователя. Не утверждай, что пользователь это написал:\n${context}`,
+            });
           }
         } else {
           // Clear last context if nothing found this time
@@ -206,8 +209,8 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   }
   if (input.mode === 'proactive' && !input.userMessage) {
     messages.push({
-      role: 'user' as const,
-      content: `[SYSTEM: Proactive trigger — ${input.proactiveKind}: ${input.proactiveContext}]`,
+      role: 'system' as const,
+      content: `Proactive trigger: ${input.proactiveKind}: ${input.proactiveContext}`,
     });
   }
 
