@@ -145,10 +145,11 @@ export async function restoreSchedules(): Promise<void> {
   const existing = await opekuQueue.getJobSchedulers();
   const existingIds = new Set(existing.map(s => s.key));
 
-  // Remove from Redis anything not in DB (orphaned entries)
+  // Remove from Redis anything not in DB (orphaned entries, including legacy keys
+  // like lunch-1/dinner-1 that predate user-scoped scheduler IDs).
   let removed = 0;
   for (const s of existing) {
-    if (s.key && s.key.startsWith('user-') && !storedIds.has(s.key)) {
+    if (s.key && !storedIds.has(s.key)) {
       await opekuQueue.removeJobScheduler(s.key);
       removed++;
     }
@@ -180,9 +181,10 @@ export async function syncSchedules(): Promise<void> {
   let restored = 0;
   let updated = 0;
 
-  // Remove from Redis anything not in DB (orphaned entries)
+  // Remove from Redis anything not in DB (orphaned entries, including legacy keys
+  // like lunch-1/dinner-1 that predate user-scoped scheduler IDs).
   for (const [key, s] of existingMap) {
-    if (key && key.startsWith('user-') && !storedMap.has(key)) {
+    if (key && !storedMap.has(key)) {
       await opekuQueue.removeJobScheduler(key);
       removed++;
     }

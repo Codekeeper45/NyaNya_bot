@@ -98,6 +98,24 @@ describe('schedule_repeating', () => {
     );
     expect(result).toEqual({ scheduled: true, schedulerId: 'user-5-sport', cron: '0 9 * * 1' });
   });
+
+  it('does not double-prefix a schedulerId that already belongs to the user', async () => {
+    mockScheduleRepeating.mockResolvedValue(undefined);
+
+    const tools = scheduleTools(1, 100, 200, TZ);
+    const result = await tools.schedule_repeating.execute(
+      { schedulerId: 'user-1-itomed-lunch', message: 'Итомед', cron: '40 12 * * *' },
+      {} as never,
+    );
+
+    expect(mockScheduleRepeating).toHaveBeenCalledWith(
+      'user-1-itomed-lunch',
+      expect.objectContaining({ context: 'Итомед' }),
+      '40 12 * * *',
+      TZ,
+    );
+    expect(result).toEqual({ scheduled: true, schedulerId: 'user-1-itomed-lunch', cron: '40 12 * * *' });
+  });
 });
 
 describe('schedule_repeating_cancel', () => {
