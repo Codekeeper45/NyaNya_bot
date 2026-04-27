@@ -226,6 +226,13 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
 
   let result: Awaited<ReturnType<typeof generateText>>;
   try {
+    const reasoningConfig = config.reasoningEffort || config.reasoningMaxTokens
+      ? {
+          ...(config.reasoningEffort ? { effort: config.reasoningEffort } : {}),
+          ...(config.reasoningMaxTokens ? { maxTokens: config.reasoningMaxTokens } : {}),
+        } as const
+      : undefined;
+
     result = await generateText({
       model: openrouter(config.primaryModel),
       system: systemPrompt,
@@ -234,6 +241,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
       stopWhen: stepCountIs(15),
       temperature: 0.7,
       abortSignal: abortController.signal,
+      ...(reasoningConfig ? { reasoning: reasoningConfig } : {}),
     });
   } catch (err: unknown) {
     const isAbort = err instanceof Error && err.name === 'AbortError';

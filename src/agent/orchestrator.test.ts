@@ -128,6 +128,8 @@ describe('runOrchestrator timeout behavior', () => {
     expect(mockGetRecentConversation).toHaveBeenCalledWith(1, 20);
   });
 
+
+
   it('passes retrieved memory as system context instead of user-authored text', async () => {
     mockMessagesCreate.mockResolvedValueOnce({ id: 42 });
     mockBuildFloatingSubgraph.mockResolvedValueOnce({

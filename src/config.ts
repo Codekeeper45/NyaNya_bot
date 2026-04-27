@@ -32,6 +32,8 @@ const configSchema = z.object({
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
   defaultTimezone: z.string().default('Asia/Almaty'),
+  reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
+  reasoningMaxTokens: z.coerce.number().optional(),
 });
 
 type Config = z.infer<typeof configSchema>;
@@ -60,6 +62,8 @@ const parsed = configSchema.parse({
   logLevel: process.env.LOG_LEVEL,
   nodeEnv: process.env.NODE_ENV,
   defaultTimezone: process.env.DEFAULT_TIMEZONE,
+  reasoningEffort: process.env.OPENROUTER_REASONING_EFFORT,
+  reasoningMaxTokens: process.env.OPENROUTER_REASONING_MAX_TOKENS,
 });
 
 if (parsed.allowedUserIds.length === 0) {
