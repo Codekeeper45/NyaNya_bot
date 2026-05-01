@@ -1,5 +1,4 @@
 import { generateText, stepCountIs, type ModelMessage } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { config } from '../config.js';
 import { buildSystemPrompt } from './prompts/system.js';
 import { buildProactivePrompt } from './prompts/proactive.js';
@@ -9,10 +8,9 @@ import { allTools } from './tools/index.js';
 import { bot } from '../bot/bot.js';
 import { markdownToHtml, stripAudioTags } from './tools/messaging.js';
 import { createChildLogger } from '../lib/logger.js';
+import { getPrimaryModel, getVisionModel, modelSupportsVision } from './models.js';
 
 const log = createChildLogger('orchestrator');
-
-const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
 
 // Track last injected context per user to avoid duplicate context in consecutive messages
 const lastContextMap = new Map<number, string>();
@@ -88,7 +86,6 @@ export interface OrchestratorInput {
   proactiveSchedulerId?: string;
   proactiveContext?: string;
   proactiveAttempt?: number;
-  onboardingComplete?: boolean;
 }
 
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
@@ -122,7 +119,6 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     weekendSleepTime: input.weekendSleepTime,
     preferences: input.preferences,
     activeJobs,
-    onboardingComplete: input.onboardingComplete,
   });
 
   if (input.mode === 'proactive') {
@@ -205,12 +201,38 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     const userContent: UserContentPart[] = [{ type: 'text', text: userMessageText }];
 
     if (input.images && input.images.length > 0) {
-      for (const img of input.images) {
-        userContent.push({
-          type: 'image',
-          image: img.data,
-          mimeType: img.mimeType,
-        });
+      if (modelSupportsVision()) {
+        // Direct vision: pass images to the model natively
+        for (const img of input.images) {
+          userContent.push({
+            type: 'image',
+            image: img.data,
+            mimeType: img.mimeType,
+          });
+        }
+      } else {
+        // Indirect vision: describe images via a vision-capable model first
+        try {
+          const descriptions: string[] = [];
+          for (let i = 0; i < input.images.length; i++) {
+            const img = input.images[i];
+            const visionResult = await generateText({
+              model: getVisionModel(),
+              messages: [
+                { role: 'user' as const, content: [
+                  { type: 'text', text: 'Опиши это изображение подробно на русском языке. Укажи все важные детали: что изображено, текст, числа, цвета, контекст.' },
+                  { type: 'image', image: img.data, mimeType: img.mimeType },
+                ] },
+              ],
+            });
+            descriptions.push(`Фото ${i + 1}: ${visionResult.text}`);
+          }
+          userContent.push({ type: 'text', text: `\n\n[Пользователь прислал ${input.images.length} фото. Описание:\n${descriptions.join('\n')}]` });
+          log.info({ userId: input.userId, imageCount: input.images.length }, 'Described images via vision fallback');
+        } catch (err) {
+          log.warn({ err, userId: input.userId }, 'Vision fallback failed — skipping images');
+          userContent.push({ type: 'text', text: `\n\n[Пользователь прислал ${input.images.length} фото, но я не смогла их рассмотреть.]` });
+        }
       }
     }
 
@@ -226,7 +248,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   // 5. Run agent loop
   log.info({ userId: input.userId, mode: input.mode }, 'Starting orchestrator');
 
-  const { tools, wasSent, getOnboardingCompleted } = allTools(input);
+  const { tools, wasSent } = allTools(input);
   const abortController = new AbortController();
   const timeoutHandle = setTimeout(() => {
     log.warn({ userId: input.userId }, 'Orchestrator timeout reached, aborting');
@@ -243,7 +265,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
       : undefined;
 
     result = await generateText({
-      model: openrouter(config.primaryModel),
+      model: getPrimaryModel(),
       system: systemPrompt,
       messages,
       tools,
@@ -299,7 +321,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
     }
   }
 
-  log.info({ userId: input.userId, steps: result.steps.length, onboardingCompleted: getOnboardingCompleted() }, 'Orchestrator completed');
+  log.info({ userId: input.userId, steps: result.steps.length }, 'Orchestrator completed');
 
   // 6. Fallback: если модель не вызвала message_send_text — отправляем result.text напрямую
   if (!wasSent() && result.text?.trim()) {

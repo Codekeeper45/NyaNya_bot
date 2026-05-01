@@ -150,7 +150,7 @@ describe('schedule_list', () => {
 });
 
 describe('setup_daily_schedule', () => {
-  it('calls setupUserSchedules and updates onboardingComplete', async () => {
+  it('calls setupUserSchedules and updates user profile', async () => {
     mockSetupSchedules.mockResolvedValue(undefined);
 
     const tools = scheduleTools(1, 100, 200, TZ);

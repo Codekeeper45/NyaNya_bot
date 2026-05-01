@@ -118,15 +118,21 @@ export async function indexUserMessages(userId: number): Promise<void> {
     }
 
     // Store relationships and facts
-    for (const triplet of triplets) {
-      const source = entityMap.get(triplet.subject);
-      const target = entityMap.get(triplet.object);
-      if (!source || !target) continue;
+    const validTriplets = triplets.map(t => {
+      const source = entityMap.get(t.subject);
+      const target = entityMap.get(t.object);
+      if (!source || !target || source.id === target.id) return null;
+      const statement = `${source.name} ${t.predicate} ${target.name}`;
+      const factKey = makeFactKey(source.id, t.predicate, target.id);
+      return { source, target, predicate: t.predicate, statement, factKey };
+    }).filter((t): t is NonNullable<typeof t> => t !== null);
 
-      // Skip self-loops
-      if (source.id === target.id) continue;
+    if (validTriplets.length === 0) continue;
 
-      const statement = `${source.name} ${triplet.predicate} ${target.name}`;
+    const factEmbeddings = await embedTexts(validTriplets.map(t => t.statement));
+
+    for (let k = 0; k < validTriplets.length; k++) {
+      const { source, target, predicate, statement, factKey } = validTriplets[k];
 
       try {
         await graphRelationshipsRepo.create({
@@ -140,17 +146,15 @@ export async function indexUserMessages(userId: number): Promise<void> {
         // Ignore duplicate relationship errors
       }
 
-      const factKey = makeFactKey(source.id, triplet.predicate, target.id);
-      const factEmbedding = await embedTexts([statement]);
       const factId = await graphFactsRepo.upsert({
         userId,
         subjectId: source.id,
-        predicate: triplet.predicate.slice(0, 255),
+        predicate: predicate.slice(0, 255),
         objectId: target.id,
         objectText: target.name,
         statement,
         factKey,
-        embedding: factEmbedding[0],
+        embedding: factEmbeddings[k],
         confidence: 80,
       }) ?? (await graphFactsRepo.findByFactKey(userId, factKey))?.id;
       if (factId) {

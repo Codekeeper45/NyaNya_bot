@@ -115,7 +115,7 @@ function buildTtsPrompt(text: string, voiceName: string): string {
     `Personality: ${profile?.personality ?? 'Универсальный'}.`,
     '',
     '## THE SCENE',
-    'Личная переписка в Telegram. Пользователь — тот, о ком Опекун заботится.',
+    'Личная переписка в Telegram. Пользователь — тот, о ком Наставник заботится.',
     '',
     "### DIRECTOR'S NOTES",
     '- Адаптируй тон к контексту сообщения.',

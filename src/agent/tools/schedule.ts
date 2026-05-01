@@ -83,7 +83,6 @@ export function scheduleTools(
   telegramUserId: number,
   chatId: number,
   userTimezone: string,
-  setOnboardingDone?: () => void,
   proactiveKind?: string,
   proactiveSchedulerId?: string,
 ) {
@@ -510,10 +509,8 @@ Cron формат: "минуты часы день_месяца месяц де�
           breakfastTime,
           lunchTime,
           dinnerTime,
-          onboardingComplete: true,
         });
-        setOnboardingDone?.();
-        log.info({ userId, weekendWakeTime }, 'Daily schedule configured via onboarding');
+        log.info({ userId, weekendWakeTime }, 'Daily schedule configured');
         return { done: true, jobs: ['morning', 'breakfast', 'lunch', 'dinner', 'reflection'] };
       },
     }),

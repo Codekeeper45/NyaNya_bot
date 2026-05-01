@@ -24,6 +24,10 @@ export function createMockJobsRepo() {
   return {
     create: vi.fn().mockResolvedValue({ id: 1 }),
     findByUserId: vi.fn().mockResolvedValue([]),
+    findPendingByUser: vi.fn().mockResolvedValue([]),
+    updateStatus: vi.fn().mockResolvedValue(undefined),
+    updateBullJobId: vi.fn().mockResolvedValue(undefined),
+    belongsToUser: vi.fn().mockResolvedValue(true),
   };
 }
 

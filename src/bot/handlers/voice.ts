@@ -32,7 +32,6 @@ export function registerVoiceHandler(botInstance: Bot<BotContext>): void {
         wakeTime: ctx.dbUser!.wakeTime ?? undefined,
         sleepTime: ctx.dbUser!.sleepTime ?? undefined,
         preferences: (ctx.dbUser!.preferences as Record<string, unknown>) ?? {},
-        onboardingComplete: ctx.dbUser!.onboardingComplete,
         mode: 'reactive',
         userMessage: text,
       }));

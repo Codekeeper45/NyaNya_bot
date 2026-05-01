@@ -35,7 +35,7 @@ export async function generateCallReply(session: CallSession, userSpeech: string
 }
 
 function buildSelfPrompt(session: CallSession, now: string): string {
-  return `Ты — «Опекун», AI-наставник ${session.userName}. Сейчас идёт телефонный звонок.
+  return `Ты — «Наставник», AI-наставник ${session.userName}. Сейчас идёт телефонный звонок.
 Причина звонка: ${session.reason}
 Время: ${now}
 

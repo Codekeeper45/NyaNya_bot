@@ -20,7 +20,6 @@ export function makeUser(overrides: Partial<User> = {}): User {
     lunchTime: null,
     dinnerTime: null,
     paused: false,
-    onboardingComplete: true,
     googleRefreshToken: null,
     phoneNumber: null,
     preferences: {},

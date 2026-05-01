@@ -37,7 +37,12 @@ vi.mock('../db/repos/users.js', () => ({
 }));
 
 vi.mock('../db/repos/jobs.js', () => ({
-  jobsRepo: { belongsToUser: mocks.belongsToUser, create: mocks.jobsCreate },
+  jobsRepo: { 
+    belongsToUser: mocks.belongsToUser, 
+    create: mocks.jobsCreate,
+    findPendingByUser: vi.fn().mockResolvedValue([]),
+    updateStatus: vi.fn().mockResolvedValue(undefined)
+  },
 }));
 
 vi.mock('../scheduler/queue.js', () => ({
@@ -144,7 +149,7 @@ describe('T-24: schedule_list', () => {
     mocks.listRepeatingJobs.mockResolvedValue([]);
     const tools = makeTools();
     const result = await tools.schedule_list.execute({}, {} as any);
-    expect(result).toMatchObject({ reminders: [] });
+    expect(result).toMatchObject({ oneTime: [], repeating: [] });
   });
 
   it('returns reminders when present', async () => {
@@ -153,7 +158,7 @@ describe('T-24: schedule_list', () => {
     ]);
     const tools = makeTools();
     const result = await tools.schedule_list.execute({}, {} as any);
-    expect((result as any).reminders).toHaveLength(1);
+    expect((result as any).repeating).toHaveLength(1);
   });
 });
 
@@ -182,9 +187,8 @@ describe('T-25: schedule_cancel', () => {
 describe('T-26: setup_daily_schedule (onboarding)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('sets up schedules and marks onboarding complete', async () => {
-    const setOnboardingDone = vi.fn();
-    const tools = makeTools(setOnboardingDone);
+  it('sets up schedules and updates user profile', async () => {
+    const tools = makeTools();
 
     await tools.setup_daily_schedule.execute(
       { wakeTime: '07:00', sleepTime: '22:00', breakfastTime: '08:00', lunchTime: '13:00', dinnerTime: '19:00' },
@@ -194,8 +198,6 @@ describe('T-26: setup_daily_schedule (onboarding)', () => {
     expect(mocks.setupUserSchedules).toHaveBeenCalled();
     expect(mocks.usersUpdate).toHaveBeenCalledWith(TEST_DB_USER_ID, expect.objectContaining({
       wakeTime: '07:00',
-      onboardingComplete: true,
     }));
-    expect(setOnboardingDone).toHaveBeenCalled();
   });
 });

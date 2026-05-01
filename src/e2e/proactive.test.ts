@@ -41,6 +41,7 @@ vi.mock('../db/repos/lesson_plans.js', () => ({
 
 vi.mock('../scheduler/queue.js', () => ({
   redisConnection: {},
+  workerRedisConnection: {},
   opekuQueue: { add: vi.fn().mockResolvedValue({ id: 'j1' }), on: vi.fn() },
 }));
 
@@ -64,7 +65,7 @@ const mockScheduleFollowup = scheduleFollowup as ReturnType<typeof vi.fn>;
 const baseUser = {
   id: 1, telegramUserId: 100, name: 'Тест', timezone: 'Asia/Almaty',
   wakeTime: '08:00', sleepTime: '23:00', breakfastTime: null, lunchTime: null,
-  dinnerTime: null, paused: false, onboardingComplete: true,
+  dinnerTime: null, paused: false,
   googleRefreshToken: null, preferences: {}, createdAt: new Date(), updatedAt: new Date(),
 };
 

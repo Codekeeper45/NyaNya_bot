@@ -96,7 +96,6 @@ describe('runOrchestrator timeout behavior', () => {
       mode: 'reactive',
       userMessage: 'Расскажи про тренды',
       preferences: {},
-      onboardingComplete: true,
     });
 
     expect(mockSendMessage).toHaveBeenCalledWith(
@@ -123,7 +122,6 @@ describe('runOrchestrator timeout behavior', () => {
       mode: 'reactive',
       userMessage: 'Расскажи, что ты помнишь про мои рабочие проекты',
       preferences: {},
-      onboardingComplete: true,
     });
 
     expect(mockGetRecentConversation).toHaveBeenCalledWith(1, 20);
@@ -148,7 +146,6 @@ describe('runOrchestrator timeout behavior', () => {
       mode: 'reactive',
       userMessage: 'Что ты помнишь про мои тренировки и спортзал?',
       preferences: {},
-      onboardingComplete: true,
     });
 
     const call = mockGenerateText.mock.calls[0]?.[0];
@@ -184,7 +181,6 @@ describe('runOrchestrator timeout behavior', () => {
       proactiveKind: 'custom_reminder',
       proactiveContext: 'Выпить таблетку',
       preferences: {},
-      onboardingComplete: true,
     });
 
     const call = mockGenerateText.mock.calls[0]?.[0];
@@ -218,7 +214,6 @@ describe('runOrchestrator timeout behavior', () => {
       proactiveKind: 'custom_reminder',
       proactiveContext: 'Выпить таблетку',
       preferences: {},
-      onboardingComplete: true,
     });
 
     expect(mockSendMessage).toHaveBeenCalledWith(3, 'Напомни выпить таблетку.', { parse_mode: 'HTML' });

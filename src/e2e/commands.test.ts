@@ -1,15 +1,20 @@
 // T-03..T-07: Command handlers (/pause, /resume, /who, /reset, /gcal)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { makeCommandUpdate, makeTextUpdate, makeUser, TEST_DB_USER_ID } from '../test/fixtures.js';
+import { makeCommandUpdate, makeTextUpdate, makeCallbackUpdate, makeUser, TEST_DB_USER_ID } from '../test/fixtures.js';
 
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
+  editMessageText: vi.fn().mockResolvedValue(true),
+  answerCallbackQuery: vi.fn().mockResolvedValue(true),
   findByTelegramId: vi.fn(),
   upsert: vi.fn(),
   update: vi.fn(),
-  getAll: vi.fn().mockResolvedValue([]),
+  retrieveAllRaw: vi.fn().mockResolvedValue({ entities: [], relationships: [] }),
+  getSavedFacts: vi.fn().mockResolvedValue([]),
   deleteAll: vi.fn().mockResolvedValue(undefined),
   deleteAllForUser: vi.fn().mockResolvedValue(undefined),
+  clearIndexState: vi.fn().mockResolvedValue(undefined),
+  clearCache: vi.fn().mockResolvedValue(undefined),
   create: vi.fn().mockResolvedValue({ id: 1 }),
   getRecent: vi.fn().mockResolvedValue([]),
   generateAuthUrl: vi.fn().mockReturnValue('https://oauth.example.com/auth'),
@@ -35,14 +40,24 @@ vi.mock('../db/repos/messages.js', () => ({
     getRecent: mocks.getRecent,
     getLastUserReplyTime: vi.fn().mockResolvedValue(null),
     deleteAllForUser: mocks.deleteAllForUser,
+    getSavedFacts: mocks.getSavedFacts,
   },
 }));
 
 vi.mock('../graphrag/index.js', () => ({
   graphRag: {
-    retrieve: mocks.getAll,
+    retrieveAllRaw: mocks.retrieveAllRaw,
     deleteAllForUser: mocks.deleteAll,
-    indexUser: vi.fn(),
+  },
+}));
+
+vi.mock('../graphrag/cache.js', () => ({
+  clearGraphRagCaches: mocks.clearCache,
+}));
+
+vi.mock('../db/repos/graph_index_state.js', () => ({
+  graphIndexStateRepo: {
+    clearUserIndex: mocks.clearIndexState,
   },
 }));
 
@@ -94,6 +109,14 @@ function createTestBot() {
     if (method === 'sendMessage') {
       mocks.sendMessage(payload.chat_id, payload.text, payload);
       return Promise.resolve({ ok: true, result: { message_id: 1 } }) as any;
+    }
+    if (method === 'editMessageText') {
+      mocks.editMessageText(payload.text, payload);
+      return Promise.resolve({ ok: true, result: true }) as any;
+    }
+    if (method === 'answerCallbackQuery') {
+      mocks.answerCallbackQuery(payload);
+      return Promise.resolve({ ok: true, result: true }) as any;
     }
     return Promise.resolve({ ok: true, result: true }) as any;
   });
@@ -157,7 +180,8 @@ describe('T-05: /who command', () => {
   });
 
   it('shows "no memories" when graph is empty', async () => {
-    mocks.getAll.mockResolvedValue('');
+    mocks.retrieveAllRaw.mockResolvedValue({ entities: [], relationships: [] });
+    mocks.getSavedFacts.mockResolvedValue([]);
     const bot = createTestBot();
     await bot.handleUpdate(makeCommandUpdate('who'));
 
@@ -169,7 +193,11 @@ describe('T-05: /who command', () => {
   });
 
   it('lists memories when present', async () => {
-    mocks.getAll.mockResolvedValue('Релевантные сущности:\n— Кофе: любит кофе\n');
+    mocks.retrieveAllRaw.mockResolvedValue({ 
+      entities: [{ name: 'Кофе', description: 'любит кофе' }], 
+      relationships: [] 
+    });
+    mocks.getSavedFacts.mockResolvedValue([]);
     const bot = createTestBot();
     await bot.handleUpdate(makeCommandUpdate('who'));
 
@@ -196,26 +224,22 @@ describe('T-06: /reset command', () => {
 
     expect(mocks.sendMessage).toHaveBeenCalledWith(
       expect.any(Number),
-      expect.stringContaining('да, сброс'),
+      expect.stringContaining('Ты уверен?'),
       expect.any(Object),
     );
   });
 
-  it('executes reset when confirmed with "да, сброс"', async () => {
+  it('executes reset when confirmed with "cmd:reset_confirm"', async () => {
     const bot = createTestBot();
     await bot.handleUpdate(makeCommandUpdate('reset'));
     vi.clearAllMocks();
     mocks.findByTelegramId.mockResolvedValue(makeUser());
 
-    await bot.handleUpdate(makeTextUpdate('да, сброс'));
+    await bot.handleUpdate(makeCallbackUpdate('cmd:reset_confirm'));
 
     expect(mocks.deleteAll).toHaveBeenCalled();
     expect(mocks.deleteAllForUser).toHaveBeenCalledWith(TEST_DB_USER_ID);
-    expect(mocks.sendMessage).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.stringContaining('забыла'),
-      expect.any(Object),
-    );
+    expect(mocks.editMessageText).toHaveBeenCalled();
   });
 });
 
@@ -264,6 +288,20 @@ describe('T-07: /gcal command', () => {
     expect(mocks.sendMessage).toHaveBeenCalledWith(
       expect.any(Number),
       expect.stringContaining('oauth.example.com'),
+      expect.any(Object),
+    );
+  });
+
+  it('explains manual callback URL paste flow', async () => {
+    mocks.isGoogleOAuthConfigured.mockReturnValue(true);
+    mocks.findByTelegramId.mockResolvedValue(makeUser({ googleRefreshToken: null }));
+
+    const bot = createTestBot();
+    await bot.handleUpdate(makeCommandUpdate('gcal'));
+
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.stringContaining('скопируй полный URL'),
       expect.any(Object),
     );
   });
