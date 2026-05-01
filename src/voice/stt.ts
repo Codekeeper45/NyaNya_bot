@@ -1,12 +1,8 @@
-import { generateText } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { config } from '../config.js';
 import { bot } from '../bot/bot.js';
 import { createChildLogger } from '../lib/logger.js';
 
 const log = createChildLogger('stt');
-
-const openrouter = createOpenRouter({ apiKey: config.openrouterApiKey });
 
 export function isSTTAvailable(): boolean {
   return !!config.openrouterApiKey;
@@ -20,25 +16,32 @@ export async function transcribeVoice(fileId: string): Promise<string> {
   const response = await fetch(fileUrl);
   if (!response.ok) throw new Error(`Failed to download voice file: ${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
-  const base64 = buffer.toString('base64');
 
-  const ext = file.file_path.split('.').pop() ?? 'ogg';
-  const mimeType = ext === 'mp4' ? 'audio/mp4' : ext === 'mp3' ? 'audio/mpeg' : 'audio/ogg';
+  const ext = file.file_path.split('.').pop()?.toLowerCase() ?? 'ogg';
+  const format = ext === 'mp4' ? 'mp4' : ext === 'mp3' ? 'mp3' : 'ogg';
 
-  log.debug({ fileId, bytes: buffer.byteLength, mimeType }, 'Transcribing via Gemini');
+  log.debug({ fileId, bytes: buffer.byteLength, format }, 'Transcribing via Whisper (OpenRouter)');
 
-  const result = await generateText({
-    model: openrouter('google/gemini-2.0-flash-001'),
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'text', text: 'Транскрибируй это аудио дословно на том языке, на котором говорит человек. Верни только текст без пояснений.' },
-        { type: 'file', data: base64, mediaType: mimeType },
-      ],
-    }],
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: `audio/${format}` }), `voice.${format}`);
+  form.append('model', 'openai/whisper-1');
+  form.append('response_format', 'text');
+
+  const res = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.openrouterApiKey}`,
+    },
+    body: form,
   });
 
-  const text = result.text.trim();
+  if (!res.ok) {
+    const errBody = await res.text();
+    log.error({ status: res.status, body: errBody.slice(0, 500) }, 'Whisper transcription failed');
+    throw new Error(`Whisper API error: ${res.status}`);
+  }
+
+  const text = (await res.text()).trim();
   log.debug({ fileId, textLen: text.length }, 'Transcription complete');
   return text;
 }
