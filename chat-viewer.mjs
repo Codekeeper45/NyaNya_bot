@@ -20,7 +20,7 @@ const HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Наставник — Консоль</title>
+<title>Опекун — Консоль</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Crimson+Pro:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
@@ -481,7 +481,7 @@ const HTML = `<!DOCTYPE html>
 <div class="topbar">
   <div class="topbar-logo">
     <div class="topbar-icon">🤖</div>
-    <span class="topbar-title">Наставник</span>
+    <span class="topbar-title">Опекун</span>
   </div>
   <div class="topbar-sep"></div>
   <span class="topbar-sub">viewer console</span>
@@ -518,7 +518,7 @@ const HTML = `<!DOCTYPE html>
     <div id="filterBar" style="display:none" class="filter-bar">
       <button class="filter-btn on" data-filter="all" onclick="setFilter('all')">Все</button>
       <button class="filter-btn" data-filter="user" onclick="setFilter('user')">Пользователь</button>
-      <button class="filter-btn" data-filter="assistant" onclick="setFilter('assistant')">Наставник</button>
+      <button class="filter-btn" data-filter="assistant" onclick="setFilter('assistant')">Опекун</button>
       <div class="stats-row">
         <div class="stat">всего: <b id="statTotal">—</b></div>
         <div class="stat">от юзера: <b id="statUser">—</b></div>

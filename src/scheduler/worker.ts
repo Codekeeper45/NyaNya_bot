@@ -165,6 +165,15 @@ export function startWorker(): Worker<JobPayload> {
         }
       }
 
+      // Don't follow up until the user has completed onboarding
+      if (kind === 'followup_check' && !user.onboardingComplete) {
+        log.info({ userId, jobId: job.id }, 'Onboarding not complete — skipping followup');
+        wasSkipped = true;
+        skipReason = 'onboarding_incomplete';
+        await logExecution();
+        return;
+      }
+
       const preferences = (user.preferences as Record<string, unknown>) ?? {};
       const followupForKind = typeof job.data.metadata?.followupForKind === 'string'
         ? job.data.metadata.followupForKind
@@ -281,6 +290,7 @@ export function startWorker(): Worker<JobPayload> {
         weekendWakeTime: user.weekendWakeTime ?? undefined,
         weekendSleepTime: user.weekendSleepTime ?? undefined,
         preferences,
+        onboardingComplete: user.onboardingComplete,
         mode: 'proactive',
         proactiveKind: kind,
         proactiveSchedulerId: originalSchedulerId,

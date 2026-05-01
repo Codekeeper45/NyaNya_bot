@@ -59,6 +59,7 @@ export function registerMessageHandler(botInstance: Bot<BotContext>): void {
       wakeTime: dbUser.wakeTime ?? undefined,
       sleepTime: dbUser.sleepTime ?? undefined,
       preferences: (dbUser.preferences as Record<string, unknown>) ?? {},
+      onboardingComplete: dbUser.onboardingComplete,
       mode: 'reactive',
       userMessage: caption,
       images,
@@ -163,6 +164,7 @@ export function registerMessageHandler(botInstance: Bot<BotContext>): void {
         wakeTime: ctx.dbUser!.wakeTime ?? undefined,
         sleepTime: ctx.dbUser!.sleepTime ?? undefined,
         preferences: (ctx.dbUser!.preferences as Record<string, unknown>) ?? {},
+        onboardingComplete: ctx.dbUser!.onboardingComplete,
         mode: 'reactive',
         userMessage,
       }));

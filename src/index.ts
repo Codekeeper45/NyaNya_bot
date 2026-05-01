@@ -18,7 +18,7 @@ import { isTwilioConfigured } from './call/initiate.js';
 
 const log = createChildLogger('main');
 
-log.info({ buildTime: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), pid: process.pid }, '🚀 Наставник starting');
+log.info({ buildTime: new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' }), pid: process.pid }, '🚀 Opekun starting');
 
 setupGlobalErrorHandlers();
 
@@ -75,7 +75,7 @@ const worker = startWorker();
 
 // Start bot (void: bot.start() resolves only when the bot stops — that's expected)
 void bot.start({
-  onStart: () => log.info('Наставник bot + worker started (long polling)'),
+  onStart: () => log.info('Opekun bot + worker started (long polling)'),
 }).catch(err => {
   log.error({ err }, 'Bot start failed');
   process.exit(1);

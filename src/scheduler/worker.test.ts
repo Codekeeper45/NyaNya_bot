@@ -92,6 +92,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: {},
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -113,6 +114,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: {},
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -133,6 +135,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: {},
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -153,6 +156,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: { followup_max_attempts: 1 },
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -173,6 +177,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: { followup_max_attempts: 3, followup_by_kind: { morning_greeting: 1 } },
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -193,6 +198,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: { followup_max_attempts: 2, followup_by_kind: { morning_greeting: 5 } },
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -213,6 +219,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: { followup_max_attempts: 5 },
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);
@@ -235,6 +242,7 @@ describe('worker followup attempt limit', () => {
       wakeTime: '08:00',
       sleepTime: '23:00',
       preferences: {},
+      onboardingComplete: true,
       paused: false,
     });
     mockGetLastUserReplyTime.mockResolvedValue(null);

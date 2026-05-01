@@ -21,6 +21,9 @@ import { memoryArchiveTools } from './memory_archive.js';
 export function allTools(ctx: OrchestratorInput) {
   const { tools: msgTools, wasSent } = messagingTools(ctx.telegramChatId, ctx.userId);
 
+  let onboardingCompleted = false;
+  const setOnboardingDone = () => { onboardingCompleted = true; };
+
   const tools = {
     ...msgTools,
     ...memoryTools(ctx.userId),
@@ -30,6 +33,7 @@ export function allTools(ctx: OrchestratorInput) {
       ctx.telegramUserId,
       ctx.telegramChatId,
       ctx.userTimezone,
+      setOnboardingDone,
       ctx.proactiveKind,
       ctx.proactiveSchedulerId,
     ),
@@ -49,5 +53,5 @@ export function allTools(ctx: OrchestratorInput) {
     ...memoryArchiveTools(ctx.userId),
   };
 
-  return { tools, wasSent };
+  return { tools, wasSent, getOnboardingCompleted: () => onboardingCompleted };
 }

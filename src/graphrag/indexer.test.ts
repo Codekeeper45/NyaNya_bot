@@ -122,6 +122,7 @@ describe('indexUserMessages', () => {
       dinnerTime: null,
       phoneNumber: null,
       paused: false,
+      onboardingComplete: true,
       googleRefreshToken: null,
       preferences: {},
       createdAt: new Date(),

@@ -72,7 +72,7 @@ async function sendMenu(ctx: BotContext, text: string, kb: InlineKeyboard): Prom
 }
 
 export function registerCommands(botInstance: Bot<BotContext>): void {
-  const HELP_TEXT = `Привет! Я Наставник — твой AI-наставник и помощник 💛
+  const HELP_TEXT = `Привет! Я Опекун — твой AI-наставник и помощник 💛
 
 Вот что я умею:
 
@@ -103,7 +103,32 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
   botInstance.command('start', async (ctx) => {
     if (!ctx.dbUser) return;
     log.info({ userId: ctx.dbUser.id }, '/start command');
-    await ctx.reply(HELP_TEXT);
+
+    if (ctx.dbUser.onboardingComplete) {
+      await ctx.reply(HELP_TEXT);
+      return;
+    }
+
+    try {
+      const { runOrchestrator } = await import('../../agent/orchestrator.js');
+      await runOrchestrator({
+        userId: ctx.dbUser.id,
+        telegramUserId: ctx.from!.id,
+        telegramChatId: ctx.chat.id,
+        userName: ctx.dbUser.name,
+        userTimezone: ctx.dbUser.timezone,
+        wakeTime: ctx.dbUser.wakeTime ?? undefined,
+        sleepTime: ctx.dbUser.sleepTime ?? undefined,
+        preferences: (ctx.dbUser.preferences as Record<string, unknown>) ?? {},
+        onboardingComplete: ctx.dbUser.onboardingComplete,
+        mode: 'proactive',
+        proactiveKind: 'onboarding',
+        proactiveContext: 'Первый запуск — познакомься с пользователем',
+      });
+    } catch (err) {
+      log.error({ err }, 'Failed to launch onboarding');
+      await ctx.reply(HELP_TEXT);
+    }
   });
 
   botInstance.command('help', async (ctx) => {
@@ -140,6 +165,10 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
   // ── /reschedule — show inline confirmation ──
   botInstance.command('reschedule', async (ctx) => {
     if (!ctx.dbUser) return;
+    if (!ctx.dbUser.onboardingComplete) {
+      await ctx.reply('Сначала пройди онбординг — я ещё не знаю твоё расписание. Напиши /start');
+      return;
+    }
 
     const kb = new InlineKeyboard()
       .text('✅ Да, пересоздать', 'cmd:reschedule_confirm')
@@ -171,8 +200,7 @@ export function registerCommands(botInstance: Bot<BotContext>): void {
       '📅 Подключение Google Calendar\n\n' +
       '1. Перейди по ссылке ниже и войди в Google\n' +
       '2. Разреши доступ к Calendar\n' +
-      '3. Если откроется страница localhost или браузер покажет ошибку, это нормально\n' +
-      '4. скопируй полный URL из адресной строки и отправь его мне сюда\n\n' +
+      '3. Страница сама подтвердит подключение\n\n' +
       `🔗 ${authUrl}`,
     );
   });

@@ -51,13 +51,13 @@ export function startCallServer(): void {
 
     if (!session) {
       log.warn({ callSid }, 'No session for answered call');
-      res.type('text/xml').send(twiml(say('Привет! Это Наставник.') + gather(`${webhookBase}/call/input`) + '</Gather>'));
+      res.type('text/xml').send(twiml(say('Привет! Это Опекун.') + gather(`${webhookBase}/call/input`) + '</Gather>'));
       return;
     }
 
     const greeting = session.callType === 'third_party'
       ? `Здравствуйте! Я звоню от имени ${session.userName}. ${session.agenda ?? session.reason}`
-      : `Привет, ${session.userName}! Это твой Наставник. ${session.reason} Как ты?`;
+      : `Привет, ${session.userName}! Это твой Опекун. ${session.reason} Как ты?`;
     addTurn(callSid, 'assistant', greeting);
 
     log.info({ callSid, userId: session.userId }, 'Call answered');
