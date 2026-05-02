@@ -18,7 +18,7 @@ import { planTools } from './plans.js';
 import { memoryGraphTools } from './memory_graph.js';
 import { memoryArchiveTools } from './memory_archive.js';
 
-export function allTools(ctx: OrchestratorInput) {
+export function allTools(ctx: OrchestratorInput, recentMessages: unknown[] = []) {
   const { tools: msgTools, wasSent } = messagingTools(ctx.telegramChatId, ctx.userId);
 
   let onboardingCompleted = false;
@@ -49,7 +49,7 @@ export function allTools(ctx: OrchestratorInput) {
     ...expenseTools(ctx.userId, ctx.userTimezone),
     ...todoTools(ctx.userId, ctx.userTimezone),
     ...planTools(ctx.userId, ctx.telegramUserId, ctx.telegramChatId, ctx.userTimezone),
-    ...memoryGraphTools(ctx.userId),
+    ...memoryGraphTools(ctx.userId, recentMessages),
     ...memoryArchiveTools(ctx.userId),
   };
 

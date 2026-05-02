@@ -66,7 +66,13 @@ export async function resolveEntityCandidate(input: EntityCandidateInput): Promi
   const canonicalName = SELF_ALIASES.has(normalizedOriginal) ? userCanonicalName : extractedName;
   const normalizedCanonical = normalizeEntityAlias(canonicalName);
 
-  const exactAlias = await graphEntityAliasesRepo.findByNormalizedAlias(input.userId, normalizedOriginal);
+  const [exactAlias, canonicalAlias] = await Promise.all([
+    graphEntityAliasesRepo.findByNormalizedAlias(input.userId, normalizedOriginal),
+    normalizedCanonical !== normalizedOriginal
+      ? graphEntityAliasesRepo.findByNormalizedAlias(input.userId, normalizedCanonical)
+      : Promise.resolve(undefined),
+  ]);
+
   if (exactAlias) {
     const entity = await graphEntitiesRepo.findByIdForUser(input.userId, exactAlias.entityId);
     if (entity) {
@@ -75,14 +81,11 @@ export async function resolveEntityCandidate(input: EntityCandidateInput): Promi
     }
   }
 
-  if (normalizedCanonical !== normalizedOriginal) {
-    const canonicalAlias = await graphEntityAliasesRepo.findByNormalizedAlias(input.userId, normalizedCanonical);
-    if (canonicalAlias) {
-      const entity = await graphEntitiesRepo.findByIdForUser(input.userId, canonicalAlias.entityId);
-      if (entity) {
-        await upsertAlias(input.userId, entity.id, extractedName, 'resolver', 100);
-        return { entityId: entity.id, name: entity.name };
-      }
+  if (canonicalAlias) {
+    const entity = await graphEntitiesRepo.findByIdForUser(input.userId, canonicalAlias.entityId);
+    if (entity) {
+      await upsertAlias(input.userId, entity.id, extractedName, 'resolver', 100);
+      return { entityId: entity.id, name: entity.name };
     }
   }
 

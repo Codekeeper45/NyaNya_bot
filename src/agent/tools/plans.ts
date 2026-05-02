@@ -51,13 +51,7 @@ export function planTools(userId: number, telegramUserId: number, telegramChatId
 
   return {
     plan_create: tool({
-      description: `Создать именованный повторяющийся план для долгосрочных регулярных активностей.
-Используй ТОЛЬКО если пользователь даёт имя плану (тренировка, чтение, медитация) — т.е. это регулярная привычка с названием, которую он будет видеть в plan_list.
-НЕ используй для безымянных технических напоминаний — там используй schedule_repeating.
-Примеры:
-- "напоминай про тренировку пн/ср/пт в 18:00" → plan_create
-- "поставь напоминание каждый день в 09:00 проверить почту" → schedule_repeating
-Дни: 0=вс, 1=пн, 2=вт, 3=ср, 4=чт, 5=пт, 6=сб. Пустой массив = каждый день.`,
+      description: 'Создать именованный повторяющийся план. WHEN: пользователь даёт имя активности ("тренировка", "чтение", "медитация"). CHAIN: прямой запрос → этот инструмент → message_send_text. RETURNS: { created: true, id, name, schedule, cron }. Дни: 0=вс..6=сб. Пустой массив = каждый день. NEVER: для безымянных напоминаний используй schedule_repeating.',
       inputSchema: z.object({
         name: z.string().max(60).describe('Название плана (например "Тренировка", "Чтение")'),
         message: z.string().describe('Что напомнить / о чём написать'),
@@ -91,7 +85,7 @@ export function planTools(userId: number, telegramUserId: number, telegramChatId
     }),
 
     plan_list: tool({
-      description: 'Список всех пользовательских планов (повторяющихся задач).',
+      description: 'Показать все планы. WHEN: перед изменением/удалением плана, или по запросу. CHAIN: ВСЕГДА первый шаг перед plan_update/plan_delete. RETURNS: { count, plans: [{ id, name, message, schedule, cron }] }.',
       inputSchema: z.object({}),
       execute: async () => {
         const all = await repeatingJobsRepo.findByUser(userId);
@@ -114,7 +108,7 @@ export function planTools(userId: number, telegramUserId: number, telegramChatId
     }),
 
     plan_update: tool({
-      description: 'Изменить существующий план — название, текст, дни или время. ОБЯЗАТЕЛЬНО вызови plan_list перед этим инструментом — ID бери только оттуда, НИКОГДА не угадывай.',
+      description: 'Изменить план. WHEN: пользователь хочет поменять время/дни/текст плана. CHAIN: plan_list (найди id) → этот инструмент → message_send_text. RETURNS: { updated: true, id, schedule }. NEVER: не угадывай ID — бери только из plan_list.',
       inputSchema: z.object({
         id: z.string().describe('ID плана — только из plan_list, не придумывай'),
         name: z.string().optional().describe('Новое название'),
@@ -157,7 +151,7 @@ export function planTools(userId: number, telegramUserId: number, telegramChatId
     }),
 
     plan_delete: tool({
-      description: 'Удалить план по ID. ОБЯЗАТЕЛЬНО вызови plan_list перед этим инструментом — ID бери только оттуда.',
+      description: 'Удалить план. WHEN: пользователь просит удалить. CHAIN: plan_list (найди id) → этот инструмент → message_send_text. RETURNS: { deleted: true, id }. NEVER: не угадывай ID — бери только из plan_list.',
       inputSchema: z.object({
         id: z.string().describe('ID плана — только из plan_list, не придумывай'),
       }),

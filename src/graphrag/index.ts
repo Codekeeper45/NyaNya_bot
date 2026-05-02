@@ -49,11 +49,13 @@ export const graphRag = {
         return '';
       }
 
+      const formatDate = (d: Date | null) => d ? d.toISOString().slice(0, 10) : '?';
+
       const lines: string[] = [];
       if (entities.length > 0) {
         lines.push('🧠 Сущности:');
         for (const e of entities) {
-          lines.push(`— ${e.name}: ${e.description}`);
+          lines.push(`— [${formatDate(e.createdAt)}] ${e.name}: ${e.description}`);
         }
       }
       if (relationships.length > 0) {

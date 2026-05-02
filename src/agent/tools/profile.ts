@@ -6,7 +6,7 @@ import type { User } from '../../db/schema.js';
 export function profileTools(userId: number) {
   return {
     profile_get: tool({
-      description: 'Получить текущий профиль пользователя (имя, часовой пояс, расписание, предпочтения)',
+      description: 'Получить профиль пользователя. WHEN: перед планированием, если нужно узнать timezone, wakeTime, sleepTime, phoneNumber, preferences. CHAIN: часто первый шаг перед schedule_*, call_*, setup_daily_schedule. RETURNS: { name, timezone, wakeTime, sleepTime, preferences, paused }.',
       inputSchema: z.object({}),
       execute: async () => {
         const user = await usersRepo.findById(userId);
@@ -25,7 +25,7 @@ export function profileTools(userId: number) {
     }),
 
     profile_update: tool({
-      description: 'Обновить профиль пользователя. Используй когда пользователь меняет имя, часовой пояс, расписание или предпочтения.',
+      description: 'Обновить личные данные пользователя. WHEN: пользователь меняет имя, город, timezone, время подъёма/сна, номер телефона. CHAIN: после уточнения данных. RETURNS: { updated: true, fields }. NEVER: не используй для изменения длины сообщений, голоса, follow-up limits — используй bot_settings_update.',
       inputSchema: z.object({
         name: z.string().optional().describe('Новое имя'),
         phoneNumber: z.string().optional().describe('Номер телефона для звонков в формате +7XXXXXXXXXX'),
@@ -58,12 +58,7 @@ export function profileTools(userId: number) {
     }),
 
     bot_settings_update: tool({
-      description: `Обновить настройки поведения бота. Вызывай автоматически когда:
-- Пользователь просит писать короче/подробнее → message_length
-- Пользователь не отвечает на follow-up несколько раз → followup_max_attempts: 1 или 2
-- Пользователь просит отвечать голосом → voice_default: true
-- Пользователь просит поставить на паузу → paused: true
-- Пользователь называет интересы, диету, темы → обновляй соответствующие поля`,
+      description: 'Обновить настройки поведения бота. WHEN: пользователь просит писать короче/подробнее, меняет голос, просит паузу, называет интересы/диету. CHAIN: вызывай автоматически, без вопросов. RETURNS: { updated: true, settings }. NEVER: не используй для имени, города, timezone — используй profile_update.',
       inputSchema: z.object({
         voice_default: z.boolean().optional().describe('Отвечать голосом по умолчанию'),
         voice_name: z.string().optional().describe('Постоянный голос для озвучки (например Leda, Fenrir, Vindemiatrix)'),

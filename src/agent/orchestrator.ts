@@ -92,9 +92,13 @@ export interface OrchestratorInput {
 export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   // 1. Load recent message history from Postgres
   const recentMessages = await messagesRepo.getRecentConversation(input.userId, 20);
-  const strictProactiveReminder = input.mode === 'proactive'
-    && (input.proactiveKind === 'meal_reminder' || input.proactiveKind === 'custom_reminder');
-  const historyWindow = strictProactiveReminder ? recentMessages.slice(0, 5) : recentMessages;
+  // Proactive modes: limit history to avoid bot continuing old conversation thread.
+  // followup_check needs full history (to know what it's following up on).
+  // All other proactive kinds start fresh — they announce themselves independently.
+  const isFollowup = input.mode === 'proactive' && input.proactiveKind === 'followup_check';
+  const historyWindow = (input.mode === 'proactive' && !isFollowup)
+    ? recentMessages.slice(0, 3)
+    : recentMessages;
   const messageHistory: ModelMessage[] = [...historyWindow].reverse().map(m => ({
     role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
     content: m.content,
@@ -185,15 +189,11 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
       log.debug({ userId: input.userId, query: input.userMessage }, 'Skipping GraphRAG retrieval — trivial message');
     }
 
-    // Record entity usage for cooldown tracking
+    // Record entity usage (single batch insert, no per-entity ownership checks)
     if (usedEntityIds.length > 0 && userMessageRecord) {
       try {
         const { graphEntityUsagesRepo } = await import('../db/repos/graph_entity_usages.js');
-        const { graphEntitiesRepo } = await import('../db/repos/graph_entities.js');
-        for (const entityId of usedEntityIds.slice(0, 10)) {
-          await graphEntityUsagesRepo.recordUsage(input.userId, entityId, userMessageRecord.id);
-          await graphEntitiesRepo.updateUsage(entityId, 0); // update last_used_at only
-        }
+        await graphEntityUsagesRepo.recordUsageBatch(input.userId, usedEntityIds.slice(0, 10), userMessageRecord.id);
         log.debug({ userId: input.userId, count: usedEntityIds.length }, 'Recorded entity usage');
       } catch (err) {
         log.warn({ userId: input.userId, err }, 'Failed to record entity usage');
@@ -250,7 +250,7 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<void> {
   // 5. Run agent loop
   log.info({ userId: input.userId, mode: input.mode }, 'Starting orchestrator');
 
-  const { tools, wasSent, getOnboardingCompleted } = allTools(input);
+  const { tools, wasSent, getOnboardingCompleted } = allTools(input, recentMessages.slice(0, 5));
   const abortController = new AbortController();
   const timeoutHandle = setTimeout(() => {
     log.warn({ userId: input.userId }, 'Orchestrator timeout reached, aborting');

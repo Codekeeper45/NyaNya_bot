@@ -13,12 +13,7 @@ const DIAGRAM_TYPES = ['flowchart', 'sequence', 'class', 'mindmap', 'timeline', 
 export function diagramTools(chatId: number) {
   return {
     diagram_render: tool({
-      description: `Нарисовать диаграмму и отправить пользователю как изображение. Используй для визуализации: схем процессов (flowchart), временных линий (timeline), диаграмм классов (class), интеллект-карт (mindmap), графиков Ганта (gantt), ER-диаграмм (er), круговых диаграмм (pie), sequence-диаграмм.
-Пиши Mermaid-код корректно. Пример flowchart:
-flowchart TD
-  A[Начало] --> B{Условие}
-  B -->|Да| C[Результат 1]
-  B -->|Нет| D[Результат 2]`,
+      description: 'Нарисовать диаграмму по Mermaid-коду и отправить как изображение. WHEN: нужно визуализировать процесс, структуру, таймлайн, ER-схему. Особенно полезно в обучении. CHAIN: [подготовь mermaidCode] → этот инструмент. RETURNS: { sent: true } или { error }. Поддерживает: flowchart, mindmap, sequence, class, timeline, gantt, er, pie.',
       inputSchema: z.object({
         mermaidCode: z.string().describe('Корректный Mermaid-код диаграммы'),
         caption: z.string().optional().describe('Подпись к изображению'),

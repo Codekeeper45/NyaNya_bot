@@ -7,7 +7,7 @@ const log = createChildLogger('tools:memory-archive');
 
 export const memoryArchiveTools = (userId: number) => ({
   memory_search_archive: tool({
-    description: 'Осознанный глубокий поиск по архивной памяти: сначала явно сохранённые факты, затем фрагменты переписки. Используй для точных деталей, старых событий, проверки GraphRAG и поиска первоисточника.',
+    description: 'Глубокий поиск по архивной памяти. WHEN: нужна точная деталь, дата, старый факт, история события, проверка GraphRAG по первоисточнику. CHAIN: используй ПОСЛЕ memory_search_graph, если graph дал мало или нужна цитата. RETURNS: { found: true, context } или { found: false, context }.',
     inputSchema: z.object({
       query: z.string().describe('Что найти в архиве памяти. Формулируй конкретно: объект, дата, тема, человек, событие.'),
     }),

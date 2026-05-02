@@ -206,8 +206,8 @@ describe('buildFloatingSubgraph', () => {
     (expandQuery as ReturnType<typeof vi.fn>).mockResolvedValue('когда пить итоприд');
     (embedText as ReturnType<typeof vi.fn>).mockResolvedValue([0.1, 0.2]);
     (graphFactsRepo.searchSimilar as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 'fact-1', statement: 'Эмир принимает Итоприд утром', distance: 0.2 },
-      { id: 'fact-2', statement: 'Эмир любит чай', distance: 0.8 },
+      { id: 'fact-1', statement: 'Эмир принимает Итоприд утром', distance: 0.2, createdAt: new Date('2026-01-15') },
+      { id: 'fact-2', statement: 'Эмир любит чай', distance: 0.8, createdAt: new Date('2026-01-15') },
     ]);
     (graphEntitiesRepo.findWithScoring as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: 'med', name: 'Итоприд', description: 'лекарство', finalScore: 0.9 },
@@ -220,7 +220,7 @@ describe('buildFloatingSubgraph', () => {
 
     const result = await buildFloatingSubgraph(1, 'когда пить итоприд', [], 6);
 
-    expect(result.context).toMatch(/^— Факт: Эмир принимает Итоприд утром/);
+    expect(result.context).toMatch(/^— \[2026-01-15\] Эмир принимает Итоприд утром/);
     expect(result.context).toContain('Итоприд: лекарство');
     expect(result.context).not.toContain('любит чай');
   });

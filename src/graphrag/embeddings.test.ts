@@ -7,58 +7,60 @@ vi.mock('../config.js', () => ({
 
 import { embedText, embedTexts } from './embeddings.js';
 
+function vec(seed: number): number[] {
+  const v = new Array(1536).fill(0);
+  v[0] = seed;
+  return v;
+}
+
 describe('embeddings', () => {
   beforeEach(() => {
     embeddingCache.clear();
   });
   it('embeds single text', async () => {
+    const embedding = vec(0.1);
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        data: [{ embedding: [0.1, 0.2, 0.3] }],
-      }),
+      json: async () => ({ data: [{ embedding }] }),
     } as any);
 
     const result = await embedText('hello');
-    expect(result).toEqual([0.1, 0.2, 0.3]);
+    expect(result).toEqual(embedding);
   });
 
   it('embeds multiple texts', async () => {
+    const emb1 = vec(0.1);
+    const emb2 = vec(0.3);
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        data: [
-          { embedding: [0.1, 0.2] },
-          { embedding: [0.3, 0.4] },
-        ],
+        data: [{ embedding: emb1 }, { embedding: emb2 }],
       }),
     } as any);
 
     const result = await embedTexts(['hello', 'world']);
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual([0.1, 0.2]);
-    expect(result[1]).toEqual([0.3, 0.4]);
+    expect(result[0]).toEqual(emb1);
+    expect(result[1]).toEqual(emb2);
   });
 
   it('maps generated embeddings only to missing texts after partial cache hit', async () => {
+    const emb1 = vec(0.1);
+    const emb2 = vec(0.3);
     global.fetch = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          data: [{ embedding: [0.1, 0.2] }],
-        }),
+        json: async () => ({ data: [{ embedding: emb1 }] }),
       } as any)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          data: [{ embedding: [0.3, 0.4] }],
-        }),
+        json: async () => ({ data: [{ embedding: emb2 }] }),
       } as any);
 
-    await expect(embedText('cached')).resolves.toEqual([0.1, 0.2]);
+    await expect(embedText('cached')).resolves.toEqual(emb1);
     const result = await embedTexts(['cached', 'missing']);
 
-    expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]]);
+    expect(result).toEqual([emb1, emb2]);
     expect(global.fetch).toHaveBeenCalledTimes(2);
     const secondCallBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].body);
     expect(secondCallBody.input).toEqual(['missing']);

@@ -3,10 +3,14 @@
  * Targets ~500-800 tokens per chunk (approximated as 4 chars per token for Russian).
  */
 export function chunkText(text: string, maxChars = 2400, overlapChars = 400): string[] {
-  if (!text.trim()) return [];
-  if (text.length <= maxChars) return [text];
+  // Remove invalid UTF-8 sequences PostgreSQL text rejects
+  const clean = text
+    .replace(/\x00/g, '')                    // null bytes
+    .replace(/[\uD800-\uDFFF]/g, '');        // lone UTF-16 surrogates
+  if (!clean.trim()) return [];
+  if (clean.length <= maxChars) return [clean];
 
-  const sentences = text.match(/[^.!?]+[.!?]+\s*/g) ?? [text];
+  const sentences = clean.match(/[^.!?]+[.!?]+\s*/g) ?? [clean];
   const chunks: string[] = [];
   let current = '';
 

@@ -8,7 +8,7 @@ const log = createChildLogger('tool:weather');
 export function weatherTools() {
   return {
     weather_get_forecast: tool({
-      description: 'Узнать прогноз погоды для конкретного города и получить советы по одежде/планам. Используй в утреннем приветствии.',
+      description: 'Узнать прогноз погоды. WHEN: утреннее приветствие, планирование дня, пользователь спрашивает погоду. CHAIN: этот инструмент → message_send_text. RETURNS: { city, date, sources: [{ title, url, snippet }] } или { error }.',
       inputSchema: z.object({
         city: z.string().describe('Город пользователя (например, Алматы, Москва)'),
         date: z.string().optional().describe('Дата (например, сегодня, завтра)'),

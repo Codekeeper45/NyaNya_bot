@@ -15,7 +15,7 @@ export function educationTools(
 ) {
   return {
     education_create_plan: tool({
-      description: 'Создать новый учебный план или тему для изучения. Используй, когда предлагаешь пользователю что-то новое или когда он присылает материал.',
+      description: 'Создать учебный план по теме. WHEN: начинается новая тема обучения или пользователь прислал материал для изучения. CHAIN: web_search (найди примеры) → этот инструмент → message_send_text(предложение запланировать). RETURNS: { success: true, planId, message }.',
       inputSchema: z.object({
         subject: z.string().describe('Предмет (например, Python, Математика, Рисование)'),
         topic: z.string().describe('Конкретная тема урока'),
@@ -43,7 +43,7 @@ export function educationTools(
     }),
 
     education_list_plans: tool({
-      description: 'Показать список всех учебных планов пользователя (активных и завершенных).',
+      description: 'Показать все учебные планы. WHEN: пользователь спрашивает "что я учу", "мои планы". CHAIN: прямой запрос → этот инструмент → message_send_text. RETURNS: { plans } или { message }.',
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -58,7 +58,7 @@ export function educationTools(
     }),
 
     education_update_status: tool({
-      description: 'Обновить статус учебного плана (например, пометить как завершенный).',
+      description: 'Изменить статус учебного плана. WHEN: тема завершена или архивирована. CHAIN: education_list_plans (найди planId) → этот инструмент → message_send_text. RETURNS: { success: true, message }.',
       inputSchema: z.object({
         planId: z.number().describe('ID учебного плана'),
         status: z.enum(['draft', 'active', 'completed', 'archived']).describe('Новый статус'),
@@ -79,7 +79,7 @@ export function educationTools(
     }),
 
     education_get_plan: tool({
-      description: 'Получить детали конкретного учебного плана по ID.',
+      description: 'Получить детали плана по ID. WHEN: нужно посмотреть содержимое конкретного плана. CHAIN: education_list_plans (найди planId) → этот инструмент → message_send_text. RETURNS: { plan } или { error }.',
       inputSchema: z.object({
         planId: z.number().describe('ID учебного плана'),
       }),
@@ -96,7 +96,7 @@ export function educationTools(
     }),
 
     education_schedule: tool({
-      description: 'Поставить учебный план в расписание повторяющихся уроков. После вызова: 1) проверь scheduled: true, 2) сообщи пользователю какой план, в какие дни и в какое время запланирован. Если scheduled: false или error — скажи об ошибке и не подтверждай создание.',
+      description: 'Запланировать повторяющиеся уроки по плану. WHEN: после создания плана — предложи пользователю поставить в расписание. CHAIN: education_create_plan → этот инструмент → message_send_text(подтверждение). RETURNS: { scheduled: true, schedulerId, cron, summary } или { error }.',
       inputSchema: z.object({
         planId: z.number().describe('ID учебного плана (из education_list_plans)'),
         days: z.array(z.number().min(0).max(6)).describe('Дни недели: 0=вс, 1=пн, 2=вт, 3=ср, 4=чт, 5=пт, 6=сб'),
@@ -148,7 +148,7 @@ export function educationTools(
     }),
 
     education_unschedule: tool({
-      description: 'Отменить расписание уроков по учебному плану. Если расписание не было активным — всё равно вернётся cancelled: true, это нормально. Не говори "отменил" до получения ответа.',
+      description: 'Отменить расписание уроков по плану. WHEN: пользователь хочет прекратить регулярные уроки. CHAIN: education_list_plans (найди planId) → этот инструмент → message_send_text. RETURNS: { cancelled: true, schedulerId } или { error }.',
       inputSchema: z.object({
         planId: z.number().describe('ID учебного плана'),
       }),

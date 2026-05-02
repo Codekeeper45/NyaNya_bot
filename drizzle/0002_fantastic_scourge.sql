@@ -1,0 +1,1 @@
+ALTER TABLE "graph_relationships" ADD CONSTRAINT "graph_rel_user_source_target_desc_unique" UNIQUE("user_id","source_id","target_id","description");

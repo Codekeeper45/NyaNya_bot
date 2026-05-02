@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, varchar, boolean, timestamp, jsonb, integer, bigint, unique, index, uuid, customType } from 'drizzle-orm/pg-core';
 
 // Custom type for pgvector (1536 dimensions for text-embedding-3-small)
@@ -53,6 +54,7 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('idx_messages_user_created').on(t.userId, t.createdAt),
+  index('idx_messages_content_fts').using('gin', sql`to_tsvector('russian', ${t.content})`),
 ]);
 
 export const jobs = pgTable('jobs', {
@@ -227,6 +229,7 @@ export const graphRelationships = pgTable('graph_relationships', {
   weight: integer('weight').notNull().default(1),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
+  unique('graph_rel_user_source_target_desc_unique').on(t.userId, t.sourceId, t.targetId, t.description),
   index('idx_graph_rel_user_source').on(t.userId, t.sourceId),
   index('idx_graph_rel_user_target').on(t.userId, t.targetId),
 ]);

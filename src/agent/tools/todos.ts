@@ -19,7 +19,7 @@ export function todoTools(userId: number, userTimezone: string) {
 
   return {
     todo_add: tool({
-      description: 'Добавить задачу в список дел. Используй когда пользователь говорит "напомни сделать", "добавь в список", "не забыть" и т.д.',
+      description: 'Добавить задачу. WHEN: автоматически при сигналах (см. "Молчаливые действия") или по прямому запросу. CHAIN: вызывай молча → message_send_text(с подтверждением в конце). RETURNS: { added: true, id, text, deadline }.',
       inputSchema: z.object({
         text: z.string().describe('Текст задачи'),
         deadline: z.string().optional().describe('Дедлайн в формате ISO (например "2025-04-25T15:00:00") — если пользователь указал срок'),
@@ -36,7 +36,7 @@ export function todoTools(userId: number, userTimezone: string) {
     }),
 
     todo_list: tool({
-      description: 'Показать список задач пользователя.',
+      description: 'Показать задачи. WHEN: перед выполнением/изменением/удалением, или по запросу. CHAIN: ВСЕГДА первый шаг перед todo_done/todo_update/todo_delete. RETURNS: { count, todos: [{ id, text, done, deadline }] }.',
       inputSchema: z.object({
         include_done: z.boolean().optional().default(false).describe('Включить выполненные задачи'),
       }),
@@ -56,7 +56,7 @@ export function todoTools(userId: number, userTimezone: string) {
     }),
 
     todo_done: tool({
-      description: 'Отметить задачу выполненной по её ID. Проверь результат: done: true — успех. done: false — задача не найдена (уже выполнена или удалена). Не говори "отметил" если done: false.',
+      description: 'Отметить задачу выполненной. WHEN: пользователь просит отметить. CHAIN: todo_list (найди id) → этот инструмент → message_send_text. RETURNS: { done: true/false, id }. done: false = задача не найдена.',
       inputSchema: z.object({
         id: z.number().describe('ID задачи'),
       }),
@@ -68,7 +68,7 @@ export function todoTools(userId: number, userTimezone: string) {
     }),
 
     todo_update: tool({
-      description: 'Изменить текст или дедлайн существующей задачи по ID. Проверь результат: updated: true — успех. updated: false — задача не найдена. Не говори "изменил" если updated: false.',
+      description: 'Изменить текст или дедлайн задачи. WHEN: нужно отредактировать. CHAIN: todo_list (найди id) → этот инструмент → message_send_text. RETURNS: { updated: true/false, id }.',
       inputSchema: z.object({
         id: z.number().describe('ID задачи'),
         text: z.string().optional().describe('Новый текст задачи'),
@@ -93,7 +93,7 @@ export function todoTools(userId: number, userTimezone: string) {
     }),
 
     todo_delete: tool({
-      description: 'Удалить задачу по ID. Проверь deleted: true — удалена. deleted: false — не найдена. Не говори "удалил" если deleted: false.',
+      description: 'Удалить задачу. WHEN: пользователь просит удалить. CHAIN: todo_list (найди id) → этот инструмент → message_send_text. RETURNS: { deleted: true/false, id }.',
       inputSchema: z.object({
         id: z.number().describe('ID задачи для удаления'),
       }),

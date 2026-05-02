@@ -27,7 +27,7 @@ export function expenseTools(userId: number, userTimezone: string) {
 
   return {
     expense_add: tool({
-      description: 'Записать расход. Вызывай когда пользователь упоминает трату: "потратил 500 на кофе", "заплатил 3000 за такси", фото чека и т.д.',
+      description: 'Записать расход. WHEN: автоматически при сигналах траты (см. "Молчаливые действия"). CHAIN: вызывай молча внутри цикла → message_send_text(с подтверждением в конце). RETURNS: { added: true, id, amount, category, date }.',
       inputSchema: z.object({
         amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Формат: "1500" или "1500.50"').describe('Сумма (например "1500" или "1500.50")'),
         category: z.enum(CATEGORIES).describe('Категория расхода'),
@@ -50,7 +50,7 @@ export function expenseTools(userId: number, userTimezone: string) {
     }),
 
     expense_list: tool({
-      description: 'Показать список расходов за период.',
+      description: 'Показать расходы за период. WHEN: пользователь спрашивает "сколько потратил", "мои траты". CHAIN: прямой запрос → этот инструмент → message_send_text. RETURNS: { period, from, to, count, totals: [{ currency, total }], items }.',
       inputSchema: z.object({
         period: z.enum(['today', 'week', 'month']).default('today').describe('Период: today/week/month'),
       }),
@@ -82,7 +82,7 @@ export function expenseTools(userId: number, userTimezone: string) {
     }),
 
     expense_stats: tool({
-      description: 'Сводка расходов по категориям за период.',
+      description: 'Сводка расходов по категориям. WHEN: анализ бюджета, вечерняя рефлексия. CHAIN: прямой запрос → этот инструмент → message_send_text. RETURNS: { period, from, to, total, byCategory: [{ category, total, percent }] }.',
       inputSchema: z.object({
         period: z.enum(['today', 'week', 'month']).default('month').describe('Период: today/week/month'),
       }),

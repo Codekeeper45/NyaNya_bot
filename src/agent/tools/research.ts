@@ -11,7 +11,7 @@ const log = createChildLogger('tool:research');
 export function researchTools(chatId?: number) {
   return {
     web_search: tool({
-      description: 'Выполнить прямой поиск в интернете для получения актуальной информации. Использует только Tavily Search (серверный поиск с поддержкой более 200 источников).',
+      description: 'Поиск в интернете через Tavily (200+ источников). WHEN: нужна актуальная информация, новости, факты, цены, погода, примеры для урока. CHAIN: web_search → web_read_many(urls из результатов) → message_send_text. RETURNS: { results: [{ title, url, snippet }] } или { message: "Ничего не найдено" }.',
       inputSchema: z.object({
         query: z.string().describe('Поисковый запрос'),
         count: z.number().optional().default(5).describe('Количество результатов'),
@@ -30,7 +30,7 @@ export function researchTools(chatId?: number) {
     }),
 
     web_read: tool({
-      description: 'Прочитать содержимое веб-страницы по URL. Использует только Tavily Extract (серверный, обходит Cloudflare и JS-рендеринг). Подходит для получения полного текста статьи, документации.',
+      description: 'Прочитать веб-страницу по URL через Tavily Extract. WHEN: нужен полный текст конкретной статьи или документации. CHAIN: web_search (найди URL) → этот инструмент → message_send_text. RETURNS: { title, content, url } или ошибку.',
       inputSchema: z.object({
         url: z.string().url().describe('URL страницы для чтения'),
       }),
@@ -47,7 +47,7 @@ export function researchTools(chatId?: number) {
     }),
 
     web_read_many: tool({
-      description: 'Прочитать 2-20 веб-страниц параллельно за один API вызов. Использует Tavily batch extract (более эффективно чем несколько web_read). Обычно быстрее и надёжнее.',
+      description: 'Прочитать 2-20 веб-страниц параллельно через Tavily batch. WHEN: нужно проанализировать несколько источников. CHAIN: web_search → этот инструмент (передай urls) → message_send_text. RETURNS: { results: [{ url, title, content }] }. ПРЕИМУЩЕСТВО: быстрее и дешевле, чем N × web_read.',
       inputSchema: z.object({
         urls: z.array(z.string().url()).min(1).max(20).describe('URLs для параллельного чтения'),
       }),
@@ -64,7 +64,7 @@ export function researchTools(chatId?: number) {
     }),
 
     web_fetch_image: tool({
-      description: 'Скачать изображение по URL и показать пользователю. Используй когда нашёл полезную картинку/инфографику для урока.',
+      description: 'Скачать изображение по URL и отправить в чат. WHEN: нашёл полезную картинку/инфографику для урока или ответа. CHAIN: web_search (найди URL картинки) → этот инструмент. RETURNS: { sent: true, mimeType } или { error }.',
       inputSchema: z.object({
         url: z.string().url().describe('Прямая ссылка на изображение'),
         caption: z.string().optional().describe('Подпись к изображению'),

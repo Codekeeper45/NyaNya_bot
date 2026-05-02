@@ -1,4 +1,4 @@
-import { eq, ne, desc, asc, and, gte, gt, count, ilike, or } from 'drizzle-orm';
+import { eq, ne, desc, asc, and, gte, gt, count, ilike, or, sql } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { messages, type Message } from '../schema.js';
 import { config } from '../../config.js';
@@ -58,12 +58,25 @@ export const messagesRepo = {
     const terms = query
       .trim()
       .split(/\s+/)
-      .filter(term => term.length >= 3)
+      .filter(term => term.length >= 2)
       .slice(0, 5);
 
-    const searchClause = terms.length > 0
-      ? or(...terms.map(term => ilike(messages.content, `%${term}%`)))
-      : ilike(messages.content, `%${query.trim()}%`);
+    if (terms.length === 0) {
+      return db()
+        .select()
+        .from(messages)
+        .where(and(
+          eq(messages.userId, userId),
+          eq(messages.source, 'memory_save'),
+          ilike(messages.content, `%${query.trim()}%`),
+        ))
+        .orderBy(desc(messages.createdAt))
+        .limit(limit);
+    }
+
+    const tsQueryStr = terms.join(' & ');
+    const tsQuery = sql`to_tsquery('russian', ${tsQueryStr})`;
+    const tsVector = sql`to_tsvector('russian', ${messages.content})`;
 
     return db()
       .select()
@@ -71,9 +84,9 @@ export const messagesRepo = {
       .where(and(
         eq(messages.userId, userId),
         eq(messages.source, 'memory_save'),
-        searchClause,
+        sql`${tsVector} @@ ${tsQuery}`,
       ))
-      .orderBy(desc(messages.createdAt))
+      .orderBy(sql`ts_rank_cd(${tsVector}, ${tsQuery}) DESC`)
       .limit(limit);
   },
 

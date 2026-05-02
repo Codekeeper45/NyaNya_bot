@@ -11,12 +11,21 @@ function db() {
   return getDb(config.databaseUrl);
 }
 
+/** Remove invalid UTF-8 sequences, null bytes, and lone surrogates that PostgreSQL text rejects. */
+function sanitizeText(text: string): string {
+  return text
+    .replace(/\x00/g, '')                    // null bytes
+    .replace(/[\uD800-\uDFFF]/g, '');        // lone UTF-16 surrogates
+}
+
 export const graphChunksRepo = {
   async create(data: NewGraphChunk & { embedding: number[] }): Promise<string> {
+    const cleanContent = sanitizeText(data.content);
     const result = await db()
       .insert(graphChunks)
       .values({
         ...data,
+        content: cleanContent,
         embedding: sql`${JSON.stringify(data.embedding)}::vector(1536)` as unknown as number[],
       })
       .returning({ id: graphChunks.id });

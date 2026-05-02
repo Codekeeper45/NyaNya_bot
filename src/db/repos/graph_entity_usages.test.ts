@@ -20,32 +20,22 @@ describe('graphEntityUsagesRepo', () => {
     vi.clearAllMocks();
   });
 
-  describe('recordUsage', () => {
-    it('creates usage record', async () => {
-      mockDb.select
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([{ id: 'entity-1' }]),
-            }),
-          }),
-        })
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([{ id: 42 }]),
-            }),
-          }),
-        });
+  describe('recordUsageBatch', () => {
+    it('creates usage records in batch', async () => {
       mockDb.insert.mockReturnValue({
         values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+          onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
         }),
       });
 
-      await graphEntityUsagesRepo.recordUsage(1, 'entity-1', 42);
+      await graphEntityUsagesRepo.recordUsageBatch(1, ['entity-1', 'entity-2'], 42);
 
       expect(mockDb.insert).toHaveBeenCalled();
+    });
+
+    it('does nothing when entityIds is empty', async () => {
+      await graphEntityUsagesRepo.recordUsageBatch(1, [], 42);
+      expect(mockDb.insert).not.toHaveBeenCalled();
     });
   });
 

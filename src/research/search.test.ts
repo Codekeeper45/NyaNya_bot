@@ -41,7 +41,7 @@ describe('webSearch (Tavily-only)', () => {
   it('throws error on Tavily failure (no Brave fallback)', async () => {
     mockTavilySearch.mockRejectedValue(new Error('Tavily API error'));
 
-    await expect(webSearch('тест запрос')).rejects.toThrow('Не удалось выполнить Tavily web_search');
+    await expect(webSearch('тест запрос')).rejects.toThrow('Не удалось выполнить поиск');
   });
 
   it('passes count to Tavily', async () => {
@@ -75,7 +75,7 @@ describe('newsSearch (Tavily-only)', () => {
   it('throws error on Tavily failure', async () => {
     mockTavilySearch.mockRejectedValue(new Error('API error'));
 
-    await expect(newsSearch('query')).rejects.toThrow('Не удалось выполнить Tavily news_search');
+    await expect(newsSearch('query')).rejects.toThrow('Не удалось выполнить поиск новостей');
   });
 
   it('throws error when TAVILY_API_KEY not configured', async () => {

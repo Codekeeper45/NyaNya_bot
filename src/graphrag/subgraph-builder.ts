@@ -34,9 +34,7 @@ export async function buildFloatingSubgraph(
   // 1. Query Expansion
   const expandedQuery = await expandQuery(userId, query, recentMessages);
 
-  // 2. Get seed entities from expanded query
-  const queryEmbedding = await embedText(expandedQuery);
-
+  // 2. Check context cache before spending tokens on embedding
   const cacheKey = contextCacheKey(userId, query);
   const cached = contextCache.get(cacheKey);
   if (cached) {
@@ -45,7 +43,10 @@ export async function buildFloatingSubgraph(
   }
   log.info({ userId }, 'Subgraph cache miss');
 
-  // 2a. Dedup: if query is very similar to recent one, reuse cached context
+  // 3. Embed only on cache miss
+  const queryEmbedding = await embedText(expandedQuery);
+
+  // 3a. Dedup: if query is very similar to recent one, reuse cached context
   if (isSimilarToRecentQuery(userId, queryEmbedding)) {
     const lastQuery = getLastQuery(userId);
     const previousCached = lastQuery ? contextCache.get(contextCacheKey(userId, lastQuery.text)) : undefined;
@@ -133,8 +134,12 @@ export async function buildFloatingSubgraph(
   return result;
 }
 
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 function formatSubgraphContext(
-  facts: Array<{ statement: string }>,
+  facts: Array<{ statement: string; createdAt: Date }>,
   entities: Array<{ name: string; description: string }>,
   relationships: Array<{ sourceName: string; description: string; targetName: string }>,
   maxChars: number,
@@ -142,10 +147,11 @@ function formatSubgraphContext(
   const lines: string[] = [];
   let chars = 0;
 
-  // Entities first
+  // Facts first (with date)
   const seenLines = new Set<string>();
   for (const f of facts) {
-    const line = `— Факт: ${f.statement}`;
+    const dateStr = formatDate(f.createdAt);
+    const line = `— [${dateStr}] ${f.statement}`;
     if (seenLines.has(line)) continue;
     if (chars + line.length > maxChars) break;
     seenLines.add(line);

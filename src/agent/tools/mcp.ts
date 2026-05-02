@@ -21,7 +21,7 @@ function calendarError(err: unknown): typeof NOT_CONNECTED {
 export function mcpCalendarTools(userId: number, userTimezone: string) {
   return {
     gcal_list_calendars: tool({
-      description: 'Список всех доступных календарей пользователя.',
+      description: 'Список календарей Google. WHEN: нужно узнать доступные календари. CHAIN: прямой запрос → этот инструмент. RETURNS: { calendars }.',
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -36,7 +36,7 @@ export function mcpCalendarTools(userId: number, userTimezone: string) {
     }),
 
     gcal_list_all_events: tool({
-      description: 'Список событий из ВСЕХ календарей пользователя на указанный период. Рекомендуется для общего обзора дня/недели.',
+      description: 'События из всех календарей за период. WHEN: утреннее приветствие, планирование дня, "что у меня на завтра". CHAIN: этот инструмент → message_send_text. RETURNS: { events } или { events: [], message }. Всегда указывай timeMin/timeMax в ISO 8601.',
       inputSchema: z.object({
         timeMin: z.string().describe('ISO 8601 начало диапазона (например, 2024-05-24T00:00:00Z)'),
         timeMax: z.string().describe('ISO 8601 конец диапазона'),
@@ -56,7 +56,7 @@ export function mcpCalendarTools(userId: number, userTimezone: string) {
     }),
 
     gcal_create_event: tool({
-      description: 'Создать новое событие в календаре.',
+      description: 'Создать событие. WHEN: пользователь просит добавить встречу. CHAIN: прямой запрос → этот инструмент → message_send_text. RETURNS: { created: true, event }. start/end в локальном времени пользователя.',
       inputSchema: z.object({
         summary: z.string().describe('Заголовок события'),
         start: z.string().describe('ISO 8601 в локальном времени, напр. 2025-04-17T10:00:00. Для дня целиком: 2025-04-17T00:00:00'),
@@ -78,7 +78,7 @@ export function mcpCalendarTools(userId: number, userTimezone: string) {
     }),
 
     gcal_update_event: tool({
-      description: 'Изменить существующее событие в календаре.',
+      description: 'Изменить событие. WHEN: пользователь просит перенести/изменить встречу. CHAIN: gcal_list_all_events (найди eventId) → этот инструмент → message_send_text. RETURNS: { updated: true, event }.',
       inputSchema: z.object({
         eventId: z.string().describe('ID события'),
         calendarId: z.string().optional().default('primary').describe('ID календаря'),
@@ -101,7 +101,7 @@ export function mcpCalendarTools(userId: number, userTimezone: string) {
     }),
 
     gcal_delete_event: tool({
-      description: 'Удалить событие из календаря.',
+      description: 'Удалить событие. WHEN: пользователь просит отменить встречу. CHAIN: gcal_list_all_events (найди eventId) → этот инструмент → message_send_text. RETURNS: { deleted: true, eventId }.',
       inputSchema: z.object({
         eventId: z.string().describe('ID события'),
         calendarId: z.string().optional().default('primary').describe('ID календаря'),

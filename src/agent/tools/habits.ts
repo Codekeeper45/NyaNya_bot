@@ -14,7 +14,7 @@ function todayDate(timezone: string): string {
 export function habitTools(userId: number, timezone: string) {
   return {
     habit_create: tool({
-      description: 'Создать новую привычку для отслеживания. Можно задать конкретные дни недели.',
+      description: 'Создать привычку для отслеживания. WHEN: пользователь хочет отслеживать регулярное действие. CHAIN: прямой запрос → этот инструмент → message_send_text. RETURNS: { success: true, habitId, message }.',
       inputSchema: z.object({
         name: z.string().describe('Название привычки, например "Зарядка 10 минут" или "Выпить 2л воды"'),
         targetDays: z.array(z.number().min(0).max(6))
@@ -35,7 +35,7 @@ export function habitTools(userId: number, timezone: string) {
     }),
 
     habit_log: tool({
-      description: 'Отметить выполнение (или невыполнение) привычки за сегодня. Обновляет стрик.',
+      description: 'Отметить выполнение привычки за сегодня. WHEN: пользователь отчитывается о привычке или ты напоминаешь. CHAIN: habit_list (найди habitId) → этот инструмент → message_send_text. RETURNS: { logged: true, streak, message }. done: false сбрасывает стрик в 0.',
       inputSchema: z.object({
         habitId: z.number().describe('ID привычки'),
         done: z.boolean().describe('true = выполнено, false = пропущено'),
@@ -74,7 +74,7 @@ export function habitTools(userId: number, timezone: string) {
     }),
 
     habit_list: tool({
-      description: 'Показать все привычки пользователя с текущими стриками и статусом на сегодня.',
+      description: 'Показать все привычки со стриками. WHEN: утреннее приветствие, вечерняя рефлексия, пользователь спрашивает. CHAIN: этот инструмент → [habit_log если нужно отметить] → message_send_text. RETURNS: { habits: [{ id, name, streak, targetDays, todayDone }], date }.',
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -98,7 +98,7 @@ export function habitTools(userId: number, timezone: string) {
     }),
 
     habit_stats: tool({
-      description: 'Показать статистику привычки за последние 7 дней.',
+      description: 'Статистика привычки за 7 дней. WHEN: пользователь спрашивает прогресс. CHAIN: habit_list (найди habitId) → этот инструмент → message_send_text. RETURNS: { name, streak, last7Days: { total, done, missed } }.',
       inputSchema: z.object({
         habitId: z.number().describe('ID привычки'),
       }),
@@ -129,7 +129,7 @@ export function habitTools(userId: number, timezone: string) {
     }),
 
     habit_delete: tool({
-      description: 'Удалить привычку.',
+      description: 'Удалить привычку. WHEN: пользователь просит удалить. CHAIN: habit_list (найди habitId) → этот инструмент → message_send_text. RETURNS: { deleted: true, name }.',
       inputSchema: z.object({
         habitId: z.number().describe('ID привычки'),
       }),

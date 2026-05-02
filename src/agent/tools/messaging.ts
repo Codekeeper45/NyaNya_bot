@@ -38,7 +38,7 @@ export function messagingTools(chatId: number, userId: number) {
 
   const tools = {
     message_send_text: tool({
-      description: 'Отправить текстовое сообщение пользователю. Это ЕДИНСТВЕННЫЙ способ общения. ОБЯЗАТЕЛЬНО используй этот инструмент для каждого ответа.',
+      description: 'Отправить текстовое сообщение пользователю. Это ЕДИНСТВЕННЫЙ способ текстового общения. WHEN: каждый цикл должен заканчиваться этим или message_send_voice. CHAIN: последний инструмент в цепочке. RETURNS: { sent: true, length } или { sent: false, reason: "already_sent" }. NEVER: не используй audio-теги [excited] в тексте — они будут удалены.',
       inputSchema: z.object({
         text: z.string().describe('Текст сообщения на русском. Поддерживает Telegram Markdown.'),
       }),
@@ -68,7 +68,7 @@ export function messagingTools(chatId: number, userId: number) {
     }),
 
     message_send_voice: tool({
-      description: 'Отправить голосовое сообщение. Для эмоциональных, коротких сообщений. Интонацией управляют аудио-теги. Если пользователь не выбрал постоянный голос — ты можешь выбрать подходящий голос под эмоцию сообщения (см. список в system prompt).',
+      description: 'Отправить голосовое сообщение. WHEN: для эмоциональных, коротких ответов. Интонацией управляют аудио-теги: [excited], [sighs], [serious], [whispers]. CHAIN: последний инструмент в цепочке. RETURNS: { sent: true, mode: "voice" } или { sent: true, mode: "text_fallback" } при ошибке TTS. NEVER: не используй, если уже вызвал message_send_text в этом цикле.',
       inputSchema: z.object({
         text: z.string().describe('Текст для озвучки. Теги управляют интонацией: [excited], [whispers], [serious], [sighs], [shouting] и т.д. Пример: "[sighs] Ладно, [excited] пошли!"'),
         voice: z.string().optional().describe('Голос для озвучки. Например: Leda (молодой, игривый), Fenrir (возбудимый), Vindemiatrix (нежный), Algieba (спокойный). Если не указан — используется голос пользователя по умолчанию.'),
@@ -121,7 +121,7 @@ export function messagingTools(chatId: number, userId: number) {
     }),
 
     message_send_photo: tool({
-      description: 'Отправить изображение пользователю по URL. Используй для отправки картинок из интернета, инфографики, скриншотов.',
+      description: 'Отправить изображение в чат. WHEN: нужно показать картинку/диаграмму пользователю. CHAIN: используй ПОСЛЕ web_fetch_image или diagram_render, когда URL точно рабочий. RETURNS: { sent: true }. NEVER: не придумывай URL — они не работают.',
       inputSchema: z.object({
         url: z.string().url().describe('URL изображения (jpg, png, gif, webp)'),
         caption: z.string().optional().describe('Подпись к изображению'),

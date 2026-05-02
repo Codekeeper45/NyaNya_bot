@@ -11,12 +11,18 @@ function db() {
   return getDb(config.databaseUrl);
 }
 
+function sanitizeText(text: string): string {
+  return text.replace(/\x00/g, '').replace(/[\uD800-\uDFFF]/g, '');
+}
+
 export const graphEntitiesRepo = {
   async create(data: NewGraphEntity & { embedding: number[] }): Promise<string> {
     const result = await db()
       .insert(graphEntities)
       .values({
         ...data,
+        name: sanitizeText(data.name),
+        description: sanitizeText(data.description),
         embedding: sql`${JSON.stringify(data.embedding)}::vector(1536)` as unknown as number[],
       })
       .returning({ id: graphEntities.id });

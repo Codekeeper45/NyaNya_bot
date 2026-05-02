@@ -1,4 +1,4 @@
-import { eq, and, or, inArray, count } from 'drizzle-orm';
+import { eq, and, or, inArray } from 'drizzle-orm';
 import { getDb } from '../client.js';
 import { graphRelationships, graphEntities } from '../schema.js';
 import type { NewGraphRelationship } from '../schema.js';
@@ -12,23 +12,13 @@ function db() {
 }
 
 export const graphRelationshipsRepo = {
-  async create(data: NewGraphRelationship): Promise<string> {
-    const entityIds = [...new Set([data.sourceId, data.targetId])];
-    const owned = await db()
-      .select({ value: count() })
-      .from(graphEntities)
-      .where(and(eq(graphEntities.userId, data.userId), inArray(graphEntities.id, entityIds)));
-    if (Number(owned[0]?.value ?? 0) !== entityIds.length) {
-      throw new Error('Cross-user graph relationship rejected');
-    }
-
+  async create(data: NewGraphRelationship): Promise<string | null> {
     const result = await db()
       .insert(graphRelationships)
       .values(data)
+      .onConflictDoNothing()
       .returning({ id: graphRelationships.id });
-    const id = result[0]?.id;
-    if (!id) throw new Error('Failed to insert graph relationship');
-    return id;
+    return result[0]?.id ?? null;
   },
 
   async findBySource(userId: number, sourceId: string) {
@@ -155,9 +145,10 @@ export const graphRelationshipsRepo = {
         )
         .limit(maxPerHop);
 
+      const currentSet = new Set(currentIds);
       const nextIds: string[] = [];
       for (const r of rels) {
-        const otherId = currentIds.includes(r.sourceId) ? r.targetId : r.sourceId;
+        const otherId = currentSet.has(r.sourceId) ? r.targetId : r.sourceId;
         if (!visited.has(otherId)) {
           visited.add(otherId);
           nextIds.push(otherId);

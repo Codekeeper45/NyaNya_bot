@@ -59,6 +59,13 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       throw new Error(`Embeddings API returned ${newEmbeddings.length} embeddings for ${missingTexts.length} inputs`);
     }
 
+    // Validate dimensions — pgvector column is vector(1536)
+    for (const emb of newEmbeddings) {
+      if (emb.length !== 1536) {
+        throw new Error(`Embedding dimension mismatch: expected 1536, got ${emb.length}`);
+      }
+    }
+
     for (let i = 0; i < missingIndices.length; i++) {
       const idx = missingIndices[i];
       const emb = newEmbeddings[i];

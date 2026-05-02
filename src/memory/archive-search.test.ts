@@ -48,10 +48,10 @@ describe('searchMemoryArchive', () => {
     const result = await searchMemoryArchive(1, 'спортзал Big Nation');
 
     expect(result.found).toBe(true);
-    expect(result.context).toContain('Сохранённые факты');
     expect(result.context).toContain('Эмир занимается в Big Nation');
     expect(result.context).not.toContain('Факт о пользователе:');
-    expect(result.context.indexOf('Сохранённые факты')).toBeLessThan(result.context.indexOf('Фрагменты переписки'));
+    // keyword fact [K] should appear before the vector chunk [V]
+    expect(result.context.indexOf('Эмир занимается в Big Nation')).toBeLessThan(result.context.indexOf('Big Nation по утрам'));
   });
 
   it('returns not found when saved facts and chunks are empty', async () => {

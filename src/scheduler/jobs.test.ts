@@ -28,6 +28,7 @@ import {
   scheduleRepeatingJob,
   cancelRepeatingJob,
   listRepeatingJobs,
+  clearAllJobsCache,
   type JobPayload,
 } from './jobs.js';
 
@@ -49,6 +50,7 @@ const payload: JobPayload = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearAllJobsCache();
   mockJobsCreate.mockResolvedValue({});
 });
 

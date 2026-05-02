@@ -34,7 +34,7 @@ function isNearDuplicateFact(nextFact: string, existingContent: string): boolean
 export function memoryTools(userId: number) {
   return {
     memory_save: tool({
-      description: 'Сохранить важный факт о пользователе в долгосрочную память. Используй когда пользователь рассказывает что-то о себе (семья, работа, предпочтения, цели). Факт будет проиндексирован в граф знаний автоматически.',
+      description: 'Сохранить важный факт о пользователе в долгосрочную память. WHEN: пользователь рассказал что-то о себе (семья, работа, предпочтения, цели, здоровье). CHAIN: вызывай молча, без вопросов, внутри цикла. RETURNS: { saved: true } или { saved: false, duplicate: true }. NEVER: не спрашивай "записать?" — просто вызывай.',
       inputSchema: z.object({
         fact: z.string().describe('Факт для запоминания'),
         category: z.enum(['profile', 'preference', 'goal', 'schedule', 'health', 'study', 'relationship', 'misc']).optional().describe('Категория факта'),

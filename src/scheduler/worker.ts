@@ -60,9 +60,8 @@ function shouldSkipBecauseAsleep(
   });
   const nowMinutes = timeToMinutes(nowStr);
 
-  const todayInTz = new Date().toLocaleDateString('en-US', { timeZone: user.timezone });
-  const dayOfWeek = new Date(todayInTz).getDay();
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: user.timezone, weekday: 'short' }).format(new Date());
+  const isWeekend = weekday === 'Sun' || weekday === 'Sat';
 
   const sleepTime = isWeekend && user.weekendSleepTime ? user.weekendSleepTime : user.sleepTime;
   const wakeTime = isWeekend && user.weekendWakeTime ? user.weekendWakeTime : user.wakeTime;

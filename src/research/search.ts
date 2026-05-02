@@ -18,7 +18,7 @@ export async function webSearch(query: string, count = 5): Promise<SearchResult[
     return await tavilySearch(query, { count, topic: 'general' });
   } catch (err) {
     log.error({ err, query }, 'Tavily web search failed');
-    throw new Error('Не удалось выполнить Tavily web_search. Попробуйте повторить позже.');
+    throw new Error('Не удалось выполнить поиск. Попробуйте повторить позже.');
   }
 }
 
@@ -30,6 +30,6 @@ export async function newsSearch(query: string, count = 5): Promise<SearchResult
     return await tavilySearch(query, { count, topic: 'news' });
   } catch (err) {
     log.error({ err, query }, 'Tavily news search failed');
-    throw new Error('Не удалось выполнить Tavily news_search. Попробуйте повторить позже.');
+    throw new Error('Не удалось выполнить поиск новостей. Попробуйте повторить позже.');
   }
 }

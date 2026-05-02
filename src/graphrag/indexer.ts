@@ -75,9 +75,11 @@ export async function indexUserMessages(userId: number): Promise<void> {
     chunkIds.push(id);
   }
 
+  // Fetch known entities once using the first chunk's embedding (reused across all chunks)
+  const knownEntities = await knownEntitiesForChunk(userId, chunkEmbeddings[0]);
+
   // Extract triplets per chunk
   for (let i = 0; i < chunks.length; i++) {
-    const knownEntities = await knownEntitiesForChunk(userId, chunkEmbeddings[i]);
     const triplets = await extractTriplets(chunks[i], { knownEntities });
     if (triplets.length === 0) continue;
 
@@ -134,17 +136,13 @@ export async function indexUserMessages(userId: number): Promise<void> {
     for (let k = 0; k < validTriplets.length; k++) {
       const { source, target, predicate, statement, factKey } = validTriplets[k];
 
-      try {
-        await graphRelationshipsRepo.create({
-          userId,
-          sourceId: source.id,
-          targetId: target.id,
-          description: statement,
-          weight: 1,
-        });
-      } catch {
-        // Ignore duplicate relationship errors
-      }
+      await graphRelationshipsRepo.create({
+        userId,
+        sourceId: source.id,
+        targetId: target.id,
+        description: statement,
+        weight: 1,
+      });
 
       const factId = await graphFactsRepo.upsert({
         userId,
@@ -156,7 +154,7 @@ export async function indexUserMessages(userId: number): Promise<void> {
         factKey,
         embedding: factEmbeddings[k],
         confidence: 80,
-      }) ?? (await graphFactsRepo.findByFactKey(userId, factKey))?.id;
+      });
       if (factId) {
         await graphFactSourcesRepo.create({ factId, chunkId: chunkIds[i] });
       }
@@ -172,11 +170,15 @@ export async function indexUserMessages(userId: number): Promise<void> {
 export async function indexAllUsers(): Promise<void> {
   const { usersRepo } = await import('../db/repos/users.js');
   const users = await usersRepo.findAllActive();
-  for (const user of users) {
-    try {
-      await indexUserMessages(user.id);
-    } catch (err) {
-      log.error({ err, userId: user.id }, 'Failed to index user');
-    }
+  const CONCURRENCY = 3;
+  for (let i = 0; i < users.length; i += CONCURRENCY) {
+    const batch = users.slice(i, i + CONCURRENCY);
+    await Promise.allSettled(batch.map(async (user) => {
+      try {
+        await indexUserMessages(user.id);
+      } catch (err) {
+        log.error({ err, userId: user.id }, 'Failed to index user');
+      }
+    }));
   }
 }

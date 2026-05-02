@@ -70,6 +70,7 @@ export async function scheduleRepeatingJob(
     { pattern: cronPattern, tz: timezone },
     { name: payload.kind, data: payloadWithId },
   );
+  invalidateJobsCache(payload.userId);
   log.info({ schedulerId, kind: payload.kind, cron: cronPattern, tz: timezone }, 'Repeating job set');
 }
 
@@ -81,22 +82,38 @@ export async function cancelJob(bullJobId: string): Promise<void> {
   }
 }
 
-export async function cancelRepeatingJob(schedulerId: string): Promise<void> {
+export async function cancelRepeatingJob(schedulerId: string, userId?: number): Promise<void> {
   // Redis first: stop firing before cleaning DB
   await opekuQueue.removeJobScheduler(schedulerId);
   await jobSkipOnceRepo.clear(schedulerId);
   await repeatingJobsRepo.remove(schedulerId);
+  if (userId !== undefined) invalidateJobsCache(userId);
   log.info({ schedulerId }, 'Repeating job cancelled');
 }
 
-export async function listRepeatingJobs(userId: number): Promise<Array<{ schedulerId: string; cron: string; name: string }>> {
-  const rows = await repeatingJobsRepo.findByUser(userId);
+const repeatingJobsCache = new Map<number, { rows: ReturnType<typeof mapJobRows>; ts: number }>();
+const JOBS_CACHE_TTL_MS = 60_000;
+
+function mapJobRows(rows: Awaited<ReturnType<typeof repeatingJobsRepo.findByUser>>) {
   return rows.map((r) => {
     const payload = r.payload as Partial<JobPayload> | undefined;
-    return {
-      schedulerId: r.schedulerId,
-      cron: r.cronPattern,
-      name: payload?.context ?? r.kind,
-    };
+    return { schedulerId: r.schedulerId, cron: r.cronPattern, name: payload?.context ?? r.kind };
   });
+}
+
+export function invalidateJobsCache(userId: number) {
+  repeatingJobsCache.delete(userId);
+}
+
+export function clearAllJobsCache() {
+  repeatingJobsCache.clear();
+}
+
+export async function listRepeatingJobs(userId: number): Promise<Array<{ schedulerId: string; cron: string; name: string }>> {
+  const cached = repeatingJobsCache.get(userId);
+  if (cached && Date.now() - cached.ts < JOBS_CACHE_TTL_MS) return cached.rows;
+  const rows = await repeatingJobsRepo.findByUser(userId);
+  const mapped = mapJobRows(rows);
+  repeatingJobsCache.set(userId, { rows: mapped, ts: Date.now() });
+  return mapped;
 }

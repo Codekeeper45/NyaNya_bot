@@ -1,6 +1,6 @@
 import { and, eq, sql, desc } from 'drizzle-orm';
 import { getDb } from '../client.js';
-import { graphEntities, graphEntityUsages, messages } from '../schema.js';
+import { graphEntityUsages } from '../schema.js';
 import { config } from '../../config.js';
 import { createChildLogger } from '../../lib/logger.js';
 
@@ -11,26 +11,13 @@ function db() {
 }
 
 export const graphEntityUsagesRepo = {
-  async recordUsage(userId: number, entityId: string, messageId: number): Promise<void> {
-    const [entity] = await db()
-      .select({ id: graphEntities.id })
-      .from(graphEntities)
-      .where(and(eq(graphEntities.userId, userId), eq(graphEntities.id, entityId)))
-      .limit(1);
-    const [message] = await db()
-      .select({ id: messages.id })
-      .from(messages)
-      .where(and(eq(messages.userId, userId), eq(messages.id, messageId)))
-      .limit(1);
-    if (!entity || !message) {
-      throw new Error('Cross-user graph usage rejected');
-    }
-
+  async recordUsageBatch(userId: number, entityIds: string[], messageId: number): Promise<void> {
+    if (entityIds.length === 0) return;
     await db()
       .insert(graphEntityUsages)
-      .values({ userId, entityId, messageId })
-      .returning({ id: graphEntityUsages.id });
-    log.debug({ userId, entityId, messageId }, 'Recorded entity usage');
+      .values(entityIds.map(entityId => ({ userId, entityId, messageId })))
+      .onConflictDoNothing();
+    log.debug({ userId, count: entityIds.length, messageId }, 'Recorded entity usages (batch)');
   },
 
   async findRecentForUser(userId: number, messageLimit = 5): Promise<string[]> {

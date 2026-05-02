@@ -43,97 +43,97 @@ export async function setupUserSchedules(
   const hasWeekendWake = user.weekendWakeTime && user.weekendWakeTime !== user.wakeTime;
   const hasWeekendSleep = user.weekendSleepTime && user.weekendSleepTime !== user.sleepTime;
 
-  if (hasWeekendWake) {
-    const [wwH, wwM] = parseTime(user.weekendWakeTime, [wakeH, wakeM]);
-    await scheduleRepeatingJob(
-      `user-${user.id}-morning-weekday`,
-      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
-      `${wakeM} ${wakeH} * * 1,2,3,4,5`,
-      user.timezone,
-    );
-    await scheduleRepeatingJob(
-      `user-${user.id}-morning-weekend`,
-      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
-      `${wwM} ${wwH} * * 0,6`,
-      user.timezone,
-    );
-  } else {
-    await scheduleRepeatingJob(
-      `user-${user.id}-morning`,
-      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
-      `${wakeM} ${wakeH} * * *`,
-      user.timezone,
-    );
-  }
-
-  // Breakfast reminder
-  await scheduleRepeatingJob(
-    `user-${user.id}-breakfast`,
-    { ...base, kind: 'meal_reminder', context: 'завтрак' },
-    `${bfM} ${bfH} * * *`,
-    user.timezone,
-  );
-
-  // Lunch reminder
-  await scheduleRepeatingJob(
-    `user-${user.id}-lunch`,
-    { ...base, kind: 'meal_reminder', context: 'обед' },
-    `${lunchM} ${lunchH} * * *`,
-    user.timezone,
-  );
-
-  // Dinner reminder
-  await scheduleRepeatingJob(
-    `user-${user.id}-dinner`,
-    { ...base, kind: 'meal_reminder', context: 'ужин' },
-    `${dinnerM} ${dinnerH} * * *`,
-    user.timezone,
-  );
-
   // Evening reflection: 1 hour before sleep
   let reflectH = sleepH - 1;
   if (reflectH < 0) reflectH += 24;
 
+  const jobs: Promise<void>[] = [];
+
+  // Morning greeting (conditional — weekday/weekend split or single)
+  if (hasWeekendWake) {
+    const [wwH, wwM] = parseTime(user.weekendWakeTime, [wakeH, wakeM]);
+    jobs.push(scheduleRepeatingJob(
+      `user-${user.id}-morning-weekday`,
+      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
+      `${wakeM} ${wakeH} * * 1,2,3,4,5`,
+      user.timezone,
+    ));
+    jobs.push(scheduleRepeatingJob(
+      `user-${user.id}-morning-weekend`,
+      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
+      `${wwM} ${wwH} * * 0,6`,
+      user.timezone,
+    ));
+  } else {
+    jobs.push(scheduleRepeatingJob(
+      `user-${user.id}-morning`,
+      { ...base, kind: 'morning_greeting', context: 'Утреннее приветствие' },
+      `${wakeM} ${wakeH} * * *`,
+      user.timezone,
+    ));
+  }
+
+  // Meals
+  jobs.push(scheduleRepeatingJob(
+    `user-${user.id}-breakfast`,
+    { ...base, kind: 'meal_reminder', context: 'завтрак' },
+    `${bfM} ${bfH} * * *`,
+    user.timezone,
+  ));
+  jobs.push(scheduleRepeatingJob(
+    `user-${user.id}-lunch`,
+    { ...base, kind: 'meal_reminder', context: 'обед' },
+    `${lunchM} ${lunchH} * * *`,
+    user.timezone,
+  ));
+  jobs.push(scheduleRepeatingJob(
+    `user-${user.id}-dinner`,
+    { ...base, kind: 'meal_reminder', context: 'ужин' },
+    `${dinnerM} ${dinnerH} * * *`,
+    user.timezone,
+  ));
+
+  // Evening reflection (conditional — weekday/weekend split or single)
   if (hasWeekendSleep) {
     const [wsH, wsM] = parseTime(user.weekendSleepTime, [sleepH, sleepM]);
     let weekendReflectH = wsH - 1;
     if (weekendReflectH < 0) weekendReflectH += 24;
-    await scheduleRepeatingJob(
+    jobs.push(scheduleRepeatingJob(
       `user-${user.id}-reflection-weekday`,
       { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
       `${sleepM} ${reflectH} * * 1,2,3,4,5`,
       user.timezone,
-    );
-    await scheduleRepeatingJob(
+    ));
+    jobs.push(scheduleRepeatingJob(
       `user-${user.id}-reflection-weekend`,
       { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
       `${wsM} ${weekendReflectH} * * 0,6`,
       user.timezone,
-    );
+    ));
   } else {
-    await scheduleRepeatingJob(
+    jobs.push(scheduleRepeatingJob(
       `user-${user.id}-reflection`,
       { ...base, kind: 'evening_reflection', context: 'Вечерняя рефлексия' },
       `${sleepM} ${reflectH} * * *`,
       user.timezone,
-    );
+    ));
   }
 
-  // Weekly educational suggestion: Sunday at 16:00
-  await scheduleRepeatingJob(
+  // Weekly
+  jobs.push(scheduleRepeatingJob(
     `user-${user.id}-edu-suggestion`,
     { ...base, kind: 'suggest_new_topic', context: 'Предложение новой темы для обучения на основе интересов' },
     `0 16 * * 0`,
     user.timezone,
-  );
-
-  // Weekly progress digest: Sunday at 21:00
-  await scheduleRepeatingJob(
+  ));
+  jobs.push(scheduleRepeatingJob(
     `user-${user.id}-weekly-digest`,
     { ...base, kind: 'weekly_digest', context: 'Итоги твоей продуктивной недели' },
     `0 21 * * 0`,
     user.timezone,
-  );
+  ));
+
+  await Promise.all(jobs);
 
   log.info({ userId: user.id, wakeTime: user.wakeTime }, 'User schedules created');
 }
@@ -145,29 +145,17 @@ export async function restoreSchedules(): Promise<void> {
   const existing = await opekuQueue.getJobSchedulers();
   const existingIds = new Set(existing.map(s => s.key));
 
-  // Remove from Redis anything not in DB (orphaned entries, including legacy keys
-  // like lunch-1/dinner-1 that predate user-scoped scheduler IDs).
-  let removed = 0;
-  for (const s of existing) {
-    if (s.key && !storedIds.has(s.key)) {
-      await opekuQueue.removeJobScheduler(s.key);
-      removed++;
-    }
-  }
+  const toRemove = existing.filter(s => s.key && !storedIds.has(s.key));
+  const toRestore = stored.filter(job => !existingIds.has(job.schedulerId));
 
-  // Add to Redis anything in DB but missing from Redis
-  let restored = 0;
-  for (const job of stored) {
-    if (existingIds.has(job.schedulerId)) continue;
-    await opekuQueue.upsertJobScheduler(
-      job.schedulerId,
-      { pattern: job.cronPattern, tz: job.timezone },
-      { name: job.kind, data: job.payload },
-    );
-    restored++;
-  }
+  await Promise.all(toRemove.map(s => opekuQueue.removeJobScheduler(s.key)));
+  await Promise.all(toRestore.map(job => opekuQueue.upsertJobScheduler(
+    job.schedulerId,
+    { pattern: job.cronPattern, tz: job.timezone },
+    { name: job.kind, data: job.payload },
+  )));
 
-  log.info({ total: stored.length, restored, removed }, 'Schedules synced with DB');
+  log.info({ total: stored.length, restored: toRestore.length, removed: toRemove.length }, 'Schedules synced with DB');
 }
 
 export async function syncSchedules(): Promise<void> {
@@ -177,47 +165,24 @@ export async function syncSchedules(): Promise<void> {
   const existing = await opekuQueue.getJobSchedulers();
   const existingMap = new Map(existing.map(s => [s.key, s]));
 
-  let removed = 0;
-  let restored = 0;
-  let updated = 0;
+  const toRemove = [...existingMap.keys()].filter(key => key && !storedMap.has(key));
+  const toUpsert = [...storedMap.entries()].filter(([schedulerId, job]) => {
+    const existing = existingMap.get(schedulerId);
+    if (!existing) return true;
+    const existingPattern = (existing as unknown as Record<string, unknown>)?.pattern;
+    const existingTz = (existing as unknown as Record<string, unknown>)?.tz;
+    return existingPattern !== job.cronPattern || existingTz !== job.timezone;
+  });
 
-  // Remove from Redis anything not in DB (orphaned entries, including legacy keys
-  // like lunch-1/dinner-1 that predate user-scoped scheduler IDs).
-  for (const [key, s] of existingMap) {
-    if (key && !storedMap.has(key)) {
-      await opekuQueue.removeJobScheduler(key);
-      removed++;
-    }
-  }
+  await Promise.all(toRemove.map(key => opekuQueue.removeJobScheduler(key)));
+  await Promise.all(toUpsert.map(([schedulerId, job]) => opekuQueue.upsertJobScheduler(
+    schedulerId,
+    { pattern: job.cronPattern, tz: job.timezone },
+    { name: job.kind, data: job.payload },
+  )));
 
-  // Add to Redis anything in DB but missing from Redis, or with different pattern/tz
-  for (const [schedulerId, job] of storedMap) {
-    const existingScheduler = existingMap.get(schedulerId);
-    if (!existingScheduler) {
-      await opekuQueue.upsertJobScheduler(
-        schedulerId,
-        { pattern: job.cronPattern, tz: job.timezone },
-        { name: job.kind, data: job.payload },
-      );
-      restored++;
-      continue;
-    }
-
-    // Check if pattern or timezone changed
-    const existingPattern = (existingScheduler as unknown as Record<string, unknown>)?.pattern;
-    const existingTz = (existingScheduler as unknown as Record<string, unknown>)?.tz;
-    if (existingPattern !== job.cronPattern || existingTz !== job.timezone) {
-      await opekuQueue.upsertJobScheduler(
-        schedulerId,
-        { pattern: job.cronPattern, tz: job.timezone },
-        { name: job.kind, data: job.payload },
-      );
-      updated++;
-    }
-  }
-
-  if (removed > 0 || restored > 0 || updated > 0) {
-    log.info({ total: stored.length, restored, removed, updated }, 'Periodic schedule sync completed');
+  if (toRemove.length > 0 || toUpsert.length > 0) {
+    log.info({ total: stored.length, upserted: toUpsert.length, removed: toRemove.length }, 'Periodic schedule sync completed');
   }
 }
 

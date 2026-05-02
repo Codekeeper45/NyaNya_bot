@@ -8,7 +8,7 @@ const REQUEST_TIMEOUT_MS = 8000;
 export function mapsTools() {
   return {
     maps_search_place: tool({
-      description: 'Поиск мест, зданий, адресов или достопримечательностей через OpenStreetMap (Nominatim). Возвращает координаты и описание.',
+      description: 'Поиск места/адреса через OpenStreetMap. WHEN: пользователь ищет место или нужны координаты для маршрута. CHAIN: этот инструмент → maps_get_route (если нужен маршрут) → maps_get_static_url → message_send_text. RETURNS: { results: [{ name, lat, lon, type }] } или { message/error }.',
       inputSchema: z.object({
         query: z.string().describe('Поисковый запрос (например, кафе рядом с метро Аль-Фараби, Москва Красная площадь)'),
         limit: z.number().optional().default(3),
@@ -44,7 +44,7 @@ export function mapsTools() {
     }),
 
     maps_get_route: tool({
-      description: 'Проложить маршрут между двумя точками (авто, велосипед или пешком) через OSRM.',
+      description: 'Проложить маршрут между двумя точками. WHEN: нужен путь от А до Б. CHAIN: maps_search_place (получи координаты) → этот инструмент → maps_get_static_url → message_send_text. RETURNS: { distance, duration, steps } или { message/error }.',
       inputSchema: z.object({
         startLat: z.string().describe('Широта старта'),
         startLon: z.string().describe('Долгота старта'),
@@ -78,7 +78,7 @@ export function mapsTools() {
     }),
 
     maps_get_static_url: tool({
-      description: 'Сгенерировать ссылку на карту для просмотра места.',
+      description: 'Сгенерировать ссылку на карту. WHEN: после поиска места или построения маршрута — чтобы пользователь мог открыть карту. CHAIN: ВСЕГДА последний шаг после maps_search_place или maps_get_route. RETURNS: { osmUrl, googleMapsUrl }.',
       inputSchema: z.object({
         lat: z.string(),
         lon: z.string(),
